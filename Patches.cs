@@ -133,7 +133,8 @@ namespace Automatons
         public static void Postfix(Object_Planter __instance)
         {
             var planter = __instance;
-            if (planter.CurrentWaterLevel <= 0
+            if (planter.GStage != Object_Planter.GrowingStage.NoSeed
+                && planter.CurrentWaterLevel <= 0
                 || planter.GStage == Object_Planter.GrowingStage.Harvestable)
             {
                 PlantersToFarm.Add(planter);
@@ -157,7 +158,7 @@ namespace Automatons
         [HarmonyPrefix]
         public static bool GetNearestObjectOfTypePostfix(ref bool __runOriginal, ref Object_Base __result, ObjectManager.ObjectType type, Vector3 pos)
         {
-            __result = ObjectManager.instance.GetObjectsOfType(type).FirstOrDefault();
+            __result = ObjectManager.instance.GetNearestObjectsOfType(type, pos).FirstOrDefault();
             __runOriginal = false;
             return false;
         }

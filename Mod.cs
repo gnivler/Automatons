@@ -22,7 +22,7 @@ namespace Automatons
 
         internal static void Log(object input)
         {
-            //File.AppendAllText("log.txt", $"{input ?? "null"}\n");
+            File.AppendAllText("log.txt", $"{input ?? "null"}\n");
         }
     }
 }
