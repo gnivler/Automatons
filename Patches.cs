@@ -1,10 +1,10 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
 using UnityEngine;
 using static Automatons.Helper;
-using Object = UnityEngine.Object;
+
+// ReSharper disable RedundantAssignment
 
 // ReSharper disable InconsistentNaming
 
@@ -12,16 +12,6 @@ namespace Automatons
 {
     public static class Patches
     {
-        private static readonly HashSet<Object_Base> BurnableObjects = new();
-        private static readonly HashSet<Object_Planter> PlantersToFarm = new();
-        private static readonly HashSet<ObjectInteraction_HarvestTrap> Traps = new();
-
-        private static readonly AccessTools.FieldRef<Object_SnareTrap, int> trappedAnimalID =
-            AccessTools.FieldRefAccess<Object_SnareTrap, int>("trappedAnimalID");
-
-        private static readonly AccessTools.FieldRef<Object_Integrity, float> m_integrity =
-            AccessTools.FieldRefAccess<Object_Integrity, float>("m_integrity");
-
         private static bool survivorsInitialized;
 
         [HarmonyPatch(typeof(BurnableObject), "Awake")]
@@ -39,22 +29,14 @@ namespace Automatons
         [HarmonyPatch(typeof(SaveManager), "LoadFromCurrentSlot")]
         public static void LoadPostfix()
         {
-            BurnableObjects.Clear();
-            PlantersToFarm.Clear();
-            Traps.Clear();
-            survivorsInitialized = false;
-            SurvivorsInitialized = false;
+            ClearGlobals();
         }
 
         [HarmonyPatch(typeof(OptionsPanel), "OnQuitToMainMenuConfirm")]
         [HarmonyPostfix]
         public static void QuitPostfix()
         {
-            BurnableObjects.Clear();
-            PlantersToFarm.Clear();
-            Traps.Clear();
-            survivorsInitialized = false;
-            SurvivorsInitialized = false;
+            ClearGlobals();
         }
 
         [HarmonyPatch(typeof(Member), "UpdateJobs")]
@@ -81,166 +63,40 @@ namespace Automatons
                 }
 
                 var members = MemberManager.instance.GetAllShelteredMembers();
-                foreach (var burningObject in BurnableObjects)
-                {
-                    try
-                    {
-                        if (!burningObject.isBurning
-                            || burningObject.beingUsed
-                            || burningObject.IsSurfaceObject
-                            && WeatherManager.instance.IsRaining())
-                        {
-                            continue;
-                        }
-
-                        // nearest extinguisher and then the nearest member to it, who must be this
-                        var extinguisher = GetNearestFireExtinguisherToFire(burningObject);
-                        var member = GetNearestMemberToFireExtinguisher(extinguisher, members, burningObject);
-                        if (__instance == member
-                            && IsAvailable(member))
-                        {
-                            DoFirefightingJob(extinguisher, member, burningObject);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Mod.Log(ex);
-                    }
-                }
-
+                ProcessBurningObjects(__instance, members);
                 if (!IsAvailable(__instance))
                 {
                     return;
                 }
 
-                // farm stuff
-                foreach (var planter in PlantersToFarm)
-                {
-                    if (planter.CurrentWaterLevel > 0)
-                    {
-                        DoFarmingJob<ObjectInteraction_HarvestPlant>(planter);
-                        continue;
-                    }
-
-                    DoFarmingJob<ObjectInteraction_WaterPlant>(planter);
-                }
-
+                ProcessFarming();
                 if (!IsAvailable(__instance))
                 {
                     return;
                 }
 
-                // harvest traps
-                for (var i = 0; i < Traps.Count; i++)
-                {
-                    try
-                    {
-                        var trapInteraction = Traps.ElementAt(i);
-                        var snareTrap = trapInteraction.obj;
-                        if (trappedAnimalID((Object_SnareTrap)snareTrap) == -1
-                            || snareTrap.beingUsed)
-                        {
-                            continue;
-                        }
-
-                        var member = members.Where(m => IsAvailable(m.member))
-                            .OrderBy(m =>
-                            {
-                                var position = m.transform.position;
-                                return position.PathDistanceTo(snareTrap.GetInteractionTransform(0).position);
-                            }).FirstOrDefault();
-
-                        if (member is null
-                            || member.member != __instance
-                            || !IsAvailable(member.member)
-                            || WeatherManager.instance.IsRaining()
-                            && WeatherManager.instance.currentDaysWeather == WeatherManager.WeatherState.BlackRain)
-                        {
-                            continue;
-                        }
-
-                        Mod.Log($"Sending {__instance.name} to harvest snare trap {snareTrap.objectId}");
-                        var job = new Job(member, trapInteraction.obj, trapInteraction, snareTrap.GetInteractionTransform(0));
-                        __instance.AddJob(job);
-                        __instance.currentjob = job;
-                        snareTrap.beingUsed = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        Mod.Log(ex);
-                    }
-                }
-
+                HarvestTraps(__instance, members);
                 if (!IsAvailable(__instance))
                 {
                     return;
                 }
 
-                // repair stuff 
-                if (__instance.profession.PerceptionSkills.ContainsKey(ProfessionsManager.ProfessionSkillType.AutomaticRepairing))
+                RepairObjects(__instance, members);
+            }
+        }
+
+
+        private static void ProcessFarming()
+        {
+            foreach (var planter in PlantersToFarm)
+            {
+                if (planter.CurrentWaterLevel > 0)
                 {
-                    try
-                    {
-                        // modified copy of GetMostDegradedObject()
-                        Object_Integrity GetIntegrityObject()
-                        {
-                            const float threshold = 25;
-                            var integrityObjects = ObjectManager.instance.integrityObjects;
-                            Object_Integrity objectIntegrity = null;
-                            for (int index = 0; index < integrityObjects.Count; ++index)
-                            {
-                                if (objectIntegrity != null)
-                                {
-                                    if (integrityObjects[index].integrity < objectIntegrity.integrity
-                                        && !integrityObjects[index].beingUsed)
-                                    {
-                                        objectIntegrity = integrityObjects[index];
-                                    }
-                                }
-                                else
-                                {
-                                    objectIntegrity = integrityObjects[index].beingUsed ? null : integrityObjects[index];
-                                }
-
-                                if (objectIntegrity is not null
-                                    && objectIntegrity.integrity / objectIntegrity.maxIntegrity * 100 <= threshold)
-                                {
-                                    return objectIntegrity;
-                                }
-                            }
-
-                            return null;
-                        }
-
-                        var objectIntegrity = GetIntegrityObject();
-                        if (objectIntegrity is null)
-                        {
-                            return;
-                        }
-
-                        // TODO Order by member distance
-                        var member = members.Where(m => IsAvailable(m.member))
-                            .OrderBy(m =>
-                            {
-                                var position = m.transform.position;
-                                return position.PathDistanceTo(objectIntegrity.GetInteractionTransform(0).position);
-                            }).FirstOrDefault();
-
-                        if (member is not null
-                            && member.member == __instance)
-                        {
-                            Mod.Log($"Sending {__instance.name} to repair {objectIntegrity.name}");
-                            var job = new Job(__instance.memberRH, objectIntegrity, objectIntegrity.GetComponent<ObjectInteraction_Repair>(), objectIntegrity.GetInteractionTransform(0));
-                            __instance.AddJob(job);
-                            __instance.currentjob = job;
-                            objectIntegrity.beingUsed = true;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Mod.Log(ex);
-                    }
+                    DoFarmingJob<ObjectInteraction_HarvestPlant>(planter);
+                    continue;
                 }
+
+                DoFarmingJob<ObjectInteraction_WaterPlant>(planter);
             }
         }
 

@@ -1,8 +1,5 @@
-﻿using System.IO;
-using System.Linq;
-using BepInEx;
+﻿using BepInEx;
 using HarmonyLib;
-using UnityEngine;
 
 // ReSharper disable InconsistentNaming
 
