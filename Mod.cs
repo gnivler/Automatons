@@ -1,6 +1,8 @@
 ﻿using System.IO;
+using System.Linq;
 using BepInEx;
 using HarmonyLib;
+using UnityEngine;
 
 // ReSharper disable InconsistentNaming
 
@@ -11,7 +13,7 @@ namespace Automatons
     {
         private const string PluginGUID = "ca.gnivler.sheltered2.Automatons";
         private const string PluginName = "Automatons";
-        private const string PluginVersion = "1.0.1";
+        private const string PluginVersion = "1.1.0";
 
         private void Awake()
         {
@@ -22,7 +24,7 @@ namespace Automatons
 
         internal static void Log(object input)
         {
-            File.AppendAllText("log.txt", $"{input ?? "null"}\n");
+            //File.AppendAllText("log.txt", $"{input ?? "null"}\n");
         }
     }
 }
