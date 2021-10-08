@@ -62,8 +62,7 @@ namespace Automatons
                     return;
                 }
 
-                var members = MemberManager.instance.GetAllShelteredMembers();
-                ProcessBurningObjects(__instance, members);
+                ProcessBurningObjects(__instance);
                 if (!IsAvailable(__instance))
                 {
                     return;
@@ -75,28 +74,13 @@ namespace Automatons
                     return;
                 }
 
-                HarvestTraps(__instance, members);
+                HarvestTraps(__instance);
                 if (!IsAvailable(__instance))
                 {
                     return;
                 }
 
-                RepairObjects(__instance, members);
-            }
-        }
-
-
-        private static void ProcessFarming()
-        {
-            foreach (var planter in PlantersToFarm)
-            {
-                if (planter.CurrentWaterLevel > 0)
-                {
-                    DoFarmingJob<ObjectInteraction_HarvestPlant>(planter);
-                    continue;
-                }
-
-                DoFarmingJob<ObjectInteraction_WaterPlant>(planter);
+                RepairObjects(__instance);
             }
         }
 
@@ -104,7 +88,7 @@ namespace Automatons
         public static void Postfix(Object_Planter __instance)
         {
             var planter = __instance;
-            if (planter.GStage != Object_Planter.GrowingStage.NoSeed
+            if (planter.GStage is not Object_Planter.GrowingStage.NoSeed
                 && planter.CurrentWaterLevel <= 0
                 || planter.GStage == Object_Planter.GrowingStage.Harvestable)
             {
@@ -120,7 +104,7 @@ namespace Automatons
         public static bool GetNearestObjectsOfTypePostfix(ref bool __runOriginal, ref List<Object_Base> __result, ObjectManager.ObjectType type, Vector3 pos)
         {
             var objectsOfType = ObjectManager.instance.GetObjectsOfType(type);
-            __result = objectsOfType.OrderBy(o => o.ChooseValidInteractionPoint().position, new CompareVector3()).ToList();
+            __result = objectsOfType.OrderBy(o => o.transform.position, new CompareVector3()).ToList();
             __runOriginal = false;
             return false;
         }
