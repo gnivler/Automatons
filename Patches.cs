@@ -40,6 +40,8 @@ namespace Automatons
         }
 
         [HarmonyPatch(typeof(Member), "UpdateJobs")]
+        //[HarmonyPatch(typeof(MemberAI), "Wander")]
+        //public static void Postfix(MemberAI __instance)
         public static void Postfix(Member __instance)
         {
             if (BreachManager.instance.inProgress)
@@ -47,7 +49,8 @@ namespace Automatons
                 return;
             }
 
-            if (IsAvailable(__instance))
+            var member = __instance.memberRH.member;
+            if (IsAvailable(member))
             {
                 // Sam Smith is an uninitialized survivor so if any exist, it's not done initializing everyone
                 if (!survivorsInitialized
@@ -62,25 +65,25 @@ namespace Automatons
                     return;
                 }
 
-                ProcessBurningObjects(__instance);
-                if (!IsAvailable(__instance))
+                ProcessBurningObjects(member);
+                if (!IsAvailable(member))
                 {
                     return;
                 }
 
                 ProcessFarming();
-                if (!IsAvailable(__instance))
+                if (!IsAvailable(member))
                 {
                     return;
                 }
 
-                HarvestTraps(__instance);
-                if (!IsAvailable(__instance))
+                HarvestTraps(member);
+                if (!IsAvailable(member))
                 {
                     return;
                 }
 
-                RepairObjects(__instance);
+                RepairObjects(member);
             }
         }
 

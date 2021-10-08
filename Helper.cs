@@ -256,88 +256,51 @@ namespace Automatons
             }
         }
 
-        internal static void RepairObjects(Member __instance)
+        internal static void RepairObjects(Member member)
         {
-            if (__instance.profession.PerceptionSkills.ContainsKey(ProfessionsManager.ProfessionSkillType.AutomaticRepairing))
+            if (member.profession.PerceptionSkills.ContainsKey(ProfessionsManager.ProfessionSkillType.AutomaticRepairing))
             {
                 try
                 {
                     // modified copy of GetMostDegradedObject()
-                    Object_Integrity GetIntegrityObject(int skip = 0)
-                    {
-                        const float threshold = 25;
-                        var integrityObjects = ObjectManager.instance.integrityObjects;
-                        Object_Integrity objectIntegrity = null;
-                        for (int index = skip; index < integrityObjects.Count; ++index)
-                        {
-                            if (objectIntegrity != null)
-                            {
-                                if (integrityObjects[index].integrity < objectIntegrity.integrity
-                                    && !integrityObjects[index].beingUsed)
-                                {
-                                    objectIntegrity = integrityObjects[index];
-                                }
-                            }
-                            else
-                            {
-                                objectIntegrity = integrityObjects[index].beingUsed ? null : integrityObjects[index];
-                            }
-
-                            if (objectIntegrity is not null
-                                && objectIntegrity.integrity / objectIntegrity.maxIntegrity * 100 <= threshold)
-                            {
-                                return objectIntegrity;
-                            }
-                        }
-
-                        return null;
-                    }
-
+                    Object_Integrity damagedObject = default;
                     // increment through objects so it doesn't get stuck on one which should be ignored for now (black rain)
-                    Object_Integrity objectIntegrity = default;
                     for (var skip = 0; skip < ObjectManager.instance.integrityObjects.Count; skip++)
                     {
-                        objectIntegrity = GetIntegrityObject(skip);
-                        var isRaining = WeatherManager.instance.IsRaining();
-                        if (objectIntegrity is not null
-                            && !objectIntegrity.IsSurfaceObject
-                            && isRaining
-                            && WeatherManager.instance.currentDaysWeather is WeatherManager.WeatherState.BlackRain
-                            || objectIntegrity is not null
-                            && !isRaining)
+                        damagedObject = GetDamagedObject(skip);
+                        if (damagedObject is not null)
                         {
                             break;
                         }
                     }
 
-                    if (objectIntegrity is null)
+                    if (damagedObject is null)
                     {
                         return;
                     }
 
-                    // TODO Order by member distance
                     var members = MemberManager.instance.GetAllShelteredMembers();
-                    var member = members.Where(m => IsAvailable(m.member))
+                    var nearestMember = members.Where(m => IsAvailable(m.member))
                         .OrderBy(m =>
                         {
                             var position = m.transform.position;
-                            var interaction = objectIntegrity.ChooseValidInteractionPoint(m.memberNavigation);
+                            var interaction = damagedObject.ChooseValidInteractionPoint(m.memberNavigation);
                             if (interaction is null)
                             {
                                 return float.MaxValue;
                             }
 
-                            return position.PathDistanceTo(objectIntegrity.ChooseValidInteractionPoint(m.memberNavigation).position);
+                            return position.PathDistanceTo(damagedObject.ChooseValidInteractionPoint(m.memberNavigation).position);
                         }).FirstOrDefault();
 
-                    if (member is not null
-                        && member.member == __instance)
+                    if (nearestMember is not null
+                        && nearestMember.member == member)
                     {
-                        Mod.Log($"Sending {__instance.name} to repair {objectIntegrity.name}");
-                        var job = new Job(__instance.memberRH, objectIntegrity, objectIntegrity.GetComponent<ObjectInteraction_Repair>(), objectIntegrity.ChooseValidInteractionPoint(__instance.memberRH.memberNavigation));
-                        __instance.AddJob(job);
-                        __instance.currentjob = job;
-                        objectIntegrity.beingUsed = true;
+                        Mod.Log($"Sending {member.name} to repair {damagedObject.name} at {damagedObject.integrityNormalised * 100}");
+                        var job = new Job(member.memberRH, damagedObject, damagedObject.GetComponent<ObjectInteraction_Repair>(), damagedObject.ChooseValidInteractionPoint(member.memberRH.memberNavigation));
+                        member.AddJob(job);
+                        member.currentjob = job;
+                        damagedObject.beingUsed = true;
                     }
                 }
                 catch (Exception ex)
@@ -346,6 +309,7 @@ namespace Automatons
                 }
             }
         }
+
 
         internal static void ProcessFarming()
         {
@@ -365,6 +329,41 @@ namespace Automatons
 
                 DoFarmingJob<ObjectInteraction_WaterPlant>(planter);
             }
+        }
+
+        internal static Object_Integrity GetDamagedObject(int skip)
+        {
+            var integrityObjects = ObjectManager.instance.integrityObjects;
+            const float threshold = 25;
+            Object_Integrity objectIntegrity = default;
+            for (int index = skip; index < integrityObjects.Count; index++)
+            {
+                if (integrityObjects[index].beingUsed
+                    // ReSharper disable once CompareOfFloatsByEqualityOperator
+                    || integrityObjects[index].integrityNormalised == 1)
+                {
+                    continue;
+                }
+
+                if (objectIntegrity is not null)
+                {
+                    if (integrityObjects[index].integrity < objectIntegrity.integrity)
+                    {
+                        objectIntegrity = integrityObjects[index];
+                    }
+                }
+                else
+                {
+                    objectIntegrity = integrityObjects[index];
+                }
+
+                if (objectIntegrity.integrityNormalised * 100 <= threshold)
+                {
+                    return objectIntegrity;
+                }
+            }
+
+            return null;
         }
     }
 }
