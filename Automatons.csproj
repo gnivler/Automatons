@@ -34,6 +34,7 @@
     </PropertyGroup>
     <ItemGroup>
         <Compile Include="Extensions.cs" />
+        <Compile Include="FireTick.cs" />
         <Compile Include="Helper.cs" />
         <Compile Include="Mod.cs" />
         <Compile Include="Patches.cs" />
