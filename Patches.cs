@@ -100,6 +100,11 @@ namespace Automatons
         [HarmonyPostfix]
         public static void ChooseNextAIActionPostfix(MemberAI __instance)
         {
+            if (DisabledAutomatonSurvivors.Contains(__instance.memberRH.member))
+            {
+                return;
+            }
+
             if (BreachManager.instance.inProgress || !MemberManager.instance.IsInitialSpawnComplete)
             {
                 return;

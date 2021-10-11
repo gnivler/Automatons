@@ -73,6 +73,12 @@
       <Reference Include="UnityEngine.TerrainModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
         <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.TerrainModule.dll</HintPath>
       </Reference>
+      <Reference Include="UnityFx.Outline, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityFx.Outline.dll</HintPath>
+      </Reference>
+      <Reference Include="UnityFx.Outline.URP, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityFx.Outline.URP.dll</HintPath>
+      </Reference>
     </ItemGroup>
     <ItemGroup>
       <Content Include="LICENSE" />

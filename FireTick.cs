@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 using static Automatons.Helper;
 
@@ -13,7 +12,7 @@ namespace Automatons
 
         private void Tick()
         {
-            ProcessBurningObjects();
+            DoFirefighting();
         }
     }
 }
