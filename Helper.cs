@@ -23,6 +23,9 @@ namespace Automatons
         private static readonly AccessTools.FieldRef<Object_Base, BurnableObject> m_burnableObject =
             AccessTools.FieldRefAccess<Object_Base, BurnableObject>("m_burnableObject");
 
+        private static readonly AccessTools.FieldRef<BaseCharacter, Vector3> m_healthLossFloatingTextOffset =
+            AccessTools.FieldRefAccess<BaseCharacter, Vector3>("m_healthLossFloatingTextOffset");
+
         private static readonly AccessTools.FieldRef<Object_SnareTrap, int> trappedAnimalID =
             AccessTools.FieldRefAccess<Object_SnareTrap, int>("trappedAnimalID");
 
@@ -59,6 +62,11 @@ namespace Automatons
 
         internal static void DoExercise(Member member)
         {
+            if (!Mod.Exercise.Value)
+            {
+                return;
+            }
+
             if (member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
             {
                 return;
@@ -86,6 +94,11 @@ namespace Automatons
 
         internal static void DoFarming(Member member)
         {
+            if (!Mod.Farming.Value)
+            {
+                return;
+            }
+
             foreach (var planter in PlantersToFarm.Where(p => !p.HasActiveInteractionMembers()))
             {
                 if (planter.CurrentWaterLevel > 0)
@@ -97,6 +110,7 @@ namespace Automatons
                 if (WaterManager.instance.storedWater >= 1)
                 {
                     DoFarmingJob<ObjectInteraction_WaterPlant>(planter, member);
+                    break;
                 }
             }
         }
@@ -183,6 +197,11 @@ namespace Automatons
 
         internal static void DoHarvestTraps(Member member)
         {
+            if (!Mod.Traps.Value)
+            {
+                return;
+            }
+
             for (var i = 0; i < Traps.Count; i++)
             {
                 var trapInteraction = Traps.ElementAt(i);
@@ -204,54 +223,57 @@ namespace Automatons
 
         internal static void DoReading(Member member)
         {
-            try
+            if (!Mod.Reading.Value)
             {
-                if (member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
-                {
-                    return;
-                }
-
-                var bookCases = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Bookshelf);
-                foreach (var bookCase in bookCases.Where(b => !b.HasActiveInteractionMembers()))
-                {
-                    ObjectInteraction_Base objectInteractionBase = default;
-                    while (objectInteractionBase is null)
-                    {
-                        if (!HasGoodBooks(member))
-                        {
-                            break;
-                        }
-
-                        var bookType = (ItemDef.BookType)Random.Range(2, 5);
-                        objectInteractionBase = bookType switch
-                        {
-                            ItemDef.BookType.Charisma when HasGoodBook(ItemDef.BookType.Charisma, member) => bookCase.GetComponent<ObjectInteraction_ReadCharismaBook>(),
-                            ItemDef.BookType.Intelligence when HasGoodBook(ItemDef.BookType.Intelligence, member) => bookCase.GetComponent<ObjectInteraction_ReadIntelligenceBook>(),
-                            ItemDef.BookType.Perception when HasGoodBook(ItemDef.BookType.Perception, member) => bookCase.GetComponent<ObjectInteraction_ReadPerceptionBook>(),
-                            // ReSharper disable once ExpressionIsAlwaysNull
-                            _ => objectInteractionBase
-                        };
-                    }
-
-                    if (objectInteractionBase is null)
-                    {
-                        continue;
-                    }
-
-                    Mod.Log($"Sending {member.name} to {objectInteractionBase.interactionType}");
-                    var job = new Job(member.memberRH, bookCase, objectInteractionBase, bookCase.GetInteractionTransform(0));
-                    member.AddJob(job);
-                    break;
-                }
+                return;
             }
-            catch (Exception ex)
+
+            if (member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
             {
-                Mod.Log(ex);
+                return;
+            }
+
+            var bookCases = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Bookshelf);
+            foreach (var bookCase in bookCases.Where(b => !b.HasActiveInteractionMembers()))
+            {
+                ObjectInteraction_Base objectInteractionBase = default;
+                while (objectInteractionBase is null)
+                {
+                    if (!HasGoodBooks(member))
+                    {
+                        break;
+                    }
+
+                    var bookType = (ItemDef.BookType)Random.Range(2, 5);
+                    objectInteractionBase = bookType switch
+                    {
+                        ItemDef.BookType.Charisma when HasGoodBook(ItemDef.BookType.Charisma, member) => bookCase.GetComponent<ObjectInteraction_ReadCharismaBook>(),
+                        ItemDef.BookType.Intelligence when HasGoodBook(ItemDef.BookType.Intelligence, member) => bookCase.GetComponent<ObjectInteraction_ReadIntelligenceBook>(),
+                        ItemDef.BookType.Perception when HasGoodBook(ItemDef.BookType.Perception, member) => bookCase.GetComponent<ObjectInteraction_ReadPerceptionBook>(),
+                        // ReSharper disable once ExpressionIsAlwaysNull
+                        _ => objectInteractionBase
+                    };
+                }
+
+                if (objectInteractionBase is null)
+                {
+                    continue;
+                }
+
+                Mod.Log($"Sending {member.name} to {objectInteractionBase.interactionType}");
+                var job = new Job(member.memberRH, bookCase, objectInteractionBase, bookCase.GetInteractionTransform(0));
+                member.AddJob(job);
+                break;
             }
         }
 
         internal static void DoRepairObjects(Member member)
         {
+            if (!Mod.Repair.Value)
+            {
+                return;
+            }
+
             if (!member.profession.PerceptionSkills.ContainsKey(ProfessionsManager.ProfessionSkillType.AutomaticRepairing))
             {
                 return;
@@ -297,6 +319,7 @@ namespace Automatons
 
         internal static void ClearGlobals()
         {
+            DisabledAutomatonSurvivors.Clear();
             BurnableObjectsMap.Clear();
             PlantersToFarm.Clear();
             Traps.Clear();
@@ -304,7 +327,10 @@ namespace Automatons
 
         private static IEnumerable<Object_Integrity> GetDamagedObjects()
         {
-            return ObjectManager.instance.integrityObjects.OrderBy(i => i.integrityNormalised).Where(i => i.integrityNormalised <= 0.25f);
+            return ObjectManager.instance.integrityObjects.Where(i =>
+                    !i.HasActiveInteractionMembers()
+                    && !(bool)AccessTools.Method(typeof(ObjectInteraction_Base), "PreventCaptorsUsingSlaveObjects").Invoke(i.interactions[0], new object[] { }))
+                .OrderBy(i => i.integrityNormalised).Where(i => i.integrityNormalised <= 0.25f);
         }
 
         private static Object_FireExtinguisher GetNearestExtinguisher(Object_Base burningObject)
@@ -483,23 +509,11 @@ namespace Automatons
                 }
             }
         }
-    }
-
-    public class CompareVector3 : Comparer<Vector3>
-    {
-        public override int Compare(Vector3 x, Vector3 y)
+        internal static void ShowFloatie(string message, BaseCharacter baseCharacter)
         {
-            if (x.magnitude > y.magnitude)
-            {
-                return 1;
-            }
-
-            if (x.magnitude < y.magnitude)
-            {
-                return -1;
-            }
-
-            return 0;
+            var offset = m_healthLossFloatingTextOffset(baseCharacter);
+            Traverse.Create(baseCharacter).Field<FloatingTextPool_Shelter>(
+                "m_floatingTextPool").Value.ShowFloatingText(message, baseCharacter.transform.position + offset, Color.magenta);
         }
     }
 }

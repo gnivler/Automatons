@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -16,7 +17,7 @@ namespace Automatons
     {
         private const string PluginGUID = "ca.gnivler.sheltered2.Automatons";
         private const string PluginName = "Automatons";
-        private const string PluginVersion = "1.2.1";
+        private const string PluginVersion = "1.2.2";
         private static string LogFile;
         private static bool dev;
 
@@ -63,16 +64,19 @@ namespace Automatons
                 && ToggleSingle.Value.Modifiers.All(Input.GetKey)
                 && InteractionManager.instance.SelectedMember is not null)
             {
-                if (Helper.DisabledAutomatonSurvivors.Contains(InteractionManager.instance.SelectedMember.member))
+                var member = InteractionManager.instance.SelectedMember;
+                if (Helper.DisabledAutomatonSurvivors.Contains(member.member))
                 {
-                    Helper.DisabledAutomatonSurvivors.Remove(InteractionManager.instance.SelectedMember.member);
-                    Patches.ChooseNextAIActionPostfix(InteractionManager.instance.SelectedMember.memberAI);
+                    Helper.DisabledAutomatonSurvivors.Remove(member.member);
+                    Patches.ChooseNextAIActionPostfix(member.memberAI);
+                    Helper.ShowFloatie("Automation enabled", member.baseCharacter);
                     return;
                 }
 
-                Helper.DisabledAutomatonSurvivors.Add(InteractionManager.instance.SelectedMember.member);
-                InteractionManager.instance.SelectedMember.member.CancelJobsImmediately();
-                InteractionManager.instance.SelectedMember.member.CancelAIJobsImmediately();
+                Helper.ShowFloatie("Automation disabled", member.baseCharacter);
+                Helper.DisabledAutomatonSurvivors.Add(member.member);
+                member.member.CancelJobsImmediately();
+                member.member.CancelAIJobsImmediately();
                 return;
             }
 
@@ -83,17 +87,13 @@ namespace Automatons
                 if (Helper.DisabledAutomatonSurvivors.Count > 0)
                 {
                     Helper.DisabledAutomatonSurvivors.Clear();
-                    MemberManager.instance.GetAllShelteredMembers().Select(m => m.memberAI).Do(Patches.ChooseNextAIActionPostfix);
-                    //Helper.AllEnabled = true;
+                    MemberManager.instance.GetAllShelteredMembers().Select(m => m.memberAI).Do(m =>
+                    {
+                        Patches.ChooseNextAIActionPostfix(m);
+                        Helper.ShowFloatie("Automation enabled", m.memberRH.baseCharacter);
+                    });
                     return;
                 }
-
-                //if (!Helper.AllEnabled)
-                //{
-                //    Helper.DisabledAutomatonSurvivors.Clear();
-                //    Helper.AllEnabled = true;
-                //    return;
-                //}
 
                 if (MemberManager.instance is not null)
                 {
@@ -102,15 +102,29 @@ namespace Automatons
                         Helper.DisabledAutomatonSurvivors.Add(m.member);
                         m.member.CancelJobsImmediately();
                         m.member.CancelAIJobsImmediately();
+                        Helper.ShowFloatie("Automation disabled", m.baseCharacter);
                     });
                     return;
                 }
             }
 
-
             if (!dev)
             {
                 return;
+            }
+
+            if (Input.GetKeyDown(KeyCode.F5))
+            {
+            }
+
+            if (Input.GetKeyDown(KeyCode.F6))
+            {
+                ObjectManager.instance.GetAllObjects().Do(b =>
+                {
+                    b.interactions.Do(i => Traverse.Create(i).Field<List<Member>>("interactionMembers").Value.Clear());
+                    b.beingUsed = false;
+                    b.interactions.Do(i => i.CancelAllJobs());
+                });
             }
 
             if (Input.GetKeyDown(KeyCode.F7))
@@ -126,6 +140,7 @@ namespace Automatons
                 }
             }
         }
+
 
         internal static void Log(object input)
         {

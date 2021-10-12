@@ -147,19 +147,9 @@ namespace Automatons
             PlantersToFarm.Remove(planter);
         }
 
-        [HarmonyPatch(typeof(ObjectManager), "GetNearestObjectsOfType")]
-        [HarmonyPrefix]
-        public static bool ObjectManagerGetNearestObjectsOfTypePostfix(ref bool __runOriginal, ref List<Object_Base> __result, ObjectManager.ObjectType type, Vector3 pos)
-        {
-            var objectsOfType = ObjectManager.instance.GetObjectsOfType(type);
-            __result = objectsOfType.OrderBy(o => o.transform.position, new CompareVector3()).ToList();
-            __runOriginal = false;
-            return false;
-        }
-
         [HarmonyPatch(typeof(ObjectManager), "GetNearestObjectOfType")]
         [HarmonyPrefix]
-        public static bool ObjectManagerGetNearestObjectOfTypePostfix(ref bool __runOriginal, ref Object_Base __result, ObjectManager.ObjectType type, Vector3 pos)
+        public static bool ObjectManagerGetNearestObjectOfTypePrefix(ref bool __runOriginal, ref Object_Base __result, ObjectManager.ObjectType type, Vector3 pos)
         {
             __result = ObjectManager.instance.GetNearestObjectsOfType(type, pos).FirstOrDefault();
             __runOriginal = false;
