@@ -3,6 +3,7 @@ using System.Linq;
 using HarmonyLib;
 using UnityEngine;
 using static Automatons.Helper;
+using Random = UnityEngine.Random;
 
 // ReSharper disable RedundantAssignment 
 // ReSharper disable InconsistentNaming
@@ -12,6 +13,10 @@ namespace Automatons
     public static class Patches
     {
         internal static bool Cheat;
+        private static readonly Dictionary<MemberAI, float> WaitTimers = new();
+        private static readonly Dictionary<Object_Planter, float> PlanterTimers = new();
+        private static readonly Dictionary<MemberAI, float> InteractionTimers = new();
+        private const float InteractionTickGameSeconds = 30;
 
         [HarmonyPatch(typeof(ObjectInteraction_Base), "RegisterForInteraction")]
         [HarmonyPrefix]
@@ -118,6 +123,20 @@ namespace Automatons
                 return;
             }
 
+            if (!WaitTimers.ContainsKey(__instance))
+            {
+                WaitTimers.Add(__instance, default);
+            }
+
+            WaitTimers[__instance] += Time.deltaTime;
+            var waitTime = RandomGameSeconds();
+            if (WaitTimers[__instance] < waitTime)
+            {
+                return;
+            }
+
+            WaitTimers[__instance] -= waitTime;
+
             foreach (var jobMethod in ExtraJobs)
             {
                 jobMethod.Invoke(null, new object[] { member });
@@ -129,13 +148,36 @@ namespace Automatons
 
             AccessTools.Method(typeof(MemberAI), "EvaluateNeeds").Invoke(member.memberRH.memberAI, new object[] { });
             member.memberRH.memberAI.FindNeedsJob();
+
+            if (IsJobless(member)
+                || lastState(member.memberRH.memberAI) is MemberAI.AiState.Idle or MemberAI.AiState.Wander)
+            {
+                lastState(member.memberRH.memberAI) = MemberAI.AiState.Rest;
+            }
+            else
+            {
+                Mod.Log($"{member.name} needs {member.memberRH.memberAI.lastState}");
+            }
         }
 
         [HarmonyPatch(typeof(Object_Planter), "Update")]
         [HarmonyPostfix]
         public static void Object_PlanterUpdatePostfix(Object_Planter __instance)
         {
+            const float waitTime = 0.25f;
             var planter = __instance;
+            if (!PlanterTimers.TryGetValue(planter, out _))
+            {
+                PlanterTimers.Add(planter, default);
+            }
+
+            PlanterTimers[planter] += Time.deltaTime;
+            if (PlanterTimers[planter] < waitTime)
+            {
+                return;
+            }
+
+            PlanterTimers[planter] -= waitTime;
             if (planter.GStage is not Object_Planter.GrowingStage.NoSeed
                 && planter.CurrentWaterLevel <= 0
                 || planter.GStage == Object_Planter.GrowingStage.Harvestable)
@@ -154,6 +196,39 @@ namespace Automatons
             __result = ObjectManager.instance.GetNearestObjectsOfType(type, pos).FirstOrDefault();
             __runOriginal = false;
             return false;
+        }
+
+        [HarmonyPatch(typeof(ObjectInteraction_Base), "UpdateInteraction")]
+        public static void Postfix(ObjectInteraction_Base __instance, MemberReferenceHolder memberRH, bool __result)
+        {
+            if (!__result
+                && __instance.interactionType is InteractionTypes.InteractionType.ReadCharismaBook
+                    or InteractionTypes.InteractionType.ReadIntelligenceBook
+                    or InteractionTypes.InteractionType.ReadPerceptionBook
+                    or InteractionTypes.InteractionType.ReadStoryBook
+                    or InteractionTypes.InteractionType.Exercise)
+            {
+                if (!InteractionTimers.TryGetValue(memberRH.memberAI, out _))
+                {
+                    InteractionTimers.Add(memberRH.memberAI, default);
+                }
+
+                InteractionTimers[memberRH.memberAI] += Time.deltaTime;
+                if (InteractionTimers[memberRH.memberAI] < InteractionTickGameSeconds)
+                {
+                    return;
+                }
+
+                InteractionTimers[memberRH.memberAI] -= InteractionTickGameSeconds;
+                var job = memberRH.member.currentjob;
+                var storedCurrentJobCopy = new Job(memberRH, job.obj, job.objInteraction, job.targetTransform);
+                AccessTools.Method(typeof(MemberAI), "EvaluateNeeds").Invoke(memberRH.memberAI, new object[] { });
+                memberRH.memberAI.FindNeedsJob();
+                if (memberRH.memberAI.currentPriorityNeed is not NeedsStat.NeedsStatType.Max)
+                {
+                    memberRH.member.AddJob(storedCurrentJobCopy);
+                }
+            }
         }
 
         [HarmonyPatch(typeof(CraftingPanel), "OnRecipeSlotPress")]

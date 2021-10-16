@@ -7,12 +7,13 @@ namespace Automatons
     {
         private void Awake()
         {
-            InvokeRepeating(nameof(Tick), 1, 1f);
+            InvokeRepeating(nameof(Tick), 1, 2f);
         }
 
         private void Tick()
         {
             DoFirefighting();
         }
+
     }
 }

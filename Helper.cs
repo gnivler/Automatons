@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -17,7 +16,7 @@ namespace Automatons
         internal static readonly HashSet<Object_Planter> PlantersToFarm = new();
         internal static readonly HashSet<ObjectInteraction_HarvestTrap> Traps = new();
 
-        private static readonly AccessTools.FieldRef<MemberAI, MemberAI.AiState> lastState =
+        internal static readonly AccessTools.FieldRef<MemberAI, MemberAI.AiState> lastState =
             AccessTools.FieldRefAccess<MemberAI, MemberAI.AiState>("lastState");
 
         private static readonly AccessTools.FieldRef<Object_Base, BurnableObject> m_burnableObject =
@@ -56,6 +55,44 @@ namespace Automatons
                 if (Mod.Reading.Value)
                 {
                     yield return AccessTools.Method(typeof(Helper), nameof(DoReading));
+                }
+
+                if (Mod.EnvironmentSeeking.Value)
+                {
+                    yield return AccessTools.Method(typeof(Helper), nameof(DoEnvironmentSeeking));
+                }
+            }
+        }
+
+        internal static void DoEnvironmentSeeking(Member member)
+        {
+            if (member.isOutside
+                && WeatherManager.instance.weatherActive
+                && WeatherManager.instance.currentDaysWeather
+                    is WeatherManager.WeatherState.BlackRain
+                    or WeatherManager.WeatherState.SandStorm
+                    or WeatherManager.WeatherState.LightSandStorm
+                    or WeatherManager.WeatherState.HeavySandStorm)
+            {
+                Mod.Log($"Sending {member.name} out of the bad weather");
+                var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(AreaManager.instance.areas[1]));
+                member.jobQueue.Add(job);
+                member.currentjob = job;
+                return;
+            }
+
+            if (member.currentTemperature is not TemperatureRating.Okay or TemperatureRating.Warm)
+            {
+                var area = FindAreaOfTemperature(TemperatureRating.Okay).FirstOrDefault()
+                           ?? FindAreaOfTemperature(TemperatureRating.Warm).FirstOrDefault();
+
+                if (area is not null
+                    && area != member.CurrentArea)
+                {
+                    Mod.Log($"Sending {member.name} to better temperatures");
+                    var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(area));
+                    member.AddJob(job);
+                    member.currentjob = job;
                 }
             }
         }
@@ -154,6 +191,11 @@ namespace Automatons
                 }
             }
 
+            if (BurnableObjectsMap.Values.All(b => !b.isBurning || b.isBeingExtinguished))
+            {
+                return;
+            }
+
             ClearJobsForFirefighting();
             foreach (var burningObject in BurnableObjectsMap)
             {
@@ -165,7 +207,7 @@ namespace Automatons
 
                 var nearestMember = GetNearestMembersToFire(burningObject.Key).FirstOrDefault(m =>
                     m.member.currentjob?.jobInteractionType is not InteractionTypes.InteractionType.ExtinguishFire)?.member;
-                if (nearestMember)
+                if (nearestMember is not null)
                 {
                     Job job;
                     var extinguishingSource = GetNearestExtinguisher(burningObject.Key);
@@ -274,7 +316,9 @@ namespace Automatons
                 return;
             }
 
-            if (!member.profession.PerceptionSkills.ContainsKey(ProfessionsManager.ProfessionSkillType.AutomaticRepairing))
+            var hasRepairSkill = member.profession.PerceptionSkills.ContainsKey(ProfessionsManager.ProfessionSkillType.AutomaticRepairing);
+            if (Mod.NeedRepairSkillToRepair.Value
+                && !hasRepairSkill)
             {
                 return;
             }
@@ -306,13 +350,15 @@ namespace Automatons
                 MemberManager.instance.GetAllShelteredMembers().Where(m =>
                         !m.member.m_breakdownController.isHavingBreakdown
                         && !m.member.OutOnExpedition
-                        && m.member.currentjob?.jobInteractionType
-                            is not InteractionTypes.InteractionType.ExtinguishFire
-                            or InteractionTypes.InteractionType.GoHere)
+                        && m.member.jobQueueCount > 0)
                     .Do(m =>
                     {
-                        m.member.CancelAIJobsImmediately();
-                        m.member.CancelJobsImmediately();
+                        if (m.member.currentjob?.jobInteractionType is not InteractionTypes.InteractionType.ExtinguishFire)
+                        {
+                            Mod.Log($"Cancelling jobs for {m.name}");
+                            m.member.CancelAIJobsImmediately();
+                            m.member.CancelJobsImmediately();
+                        }
                     });
             }
         }
@@ -329,8 +375,9 @@ namespace Automatons
         {
             return ObjectManager.instance.integrityObjects.Where(i =>
                     !i.HasActiveInteractionMembers()
-                    && !(bool)AccessTools.Method(typeof(ObjectInteraction_Base), "PreventCaptorsUsingSlaveObjects").Invoke(i.interactions[0], new object[] { }))
-                .OrderBy(i => i.integrityNormalised).Where(i => i.integrityNormalised <= 0.25f);
+                    && !i.IsWithinHoldingCell
+                    && i.integrityNormalised <= Mod.RepairThreshold.Value / 100f)
+                .OrderBy(i => i.integrityNormalised);
         }
 
         private static Object_FireExtinguisher GetNearestExtinguisher(Object_Base burningObject)
@@ -509,11 +556,34 @@ namespace Automatons
                 }
             }
         }
+
         internal static void ShowFloatie(string message, BaseCharacter baseCharacter)
         {
             var offset = m_healthLossFloatingTextOffset(baseCharacter);
             Traverse.Create(baseCharacter).Field<FloatingTextPool_Shelter>(
                 "m_floatingTextPool").Value.ShowFloatingText(message, baseCharacter.transform.position + offset, Color.magenta);
+        }
+
+        private static Vector3 ReturnAdjustedAreaPosition(Area area)
+        {
+            var pos = area.transform.position;
+            var width = area.areaCollider.size.x / 2 - 5;
+            var adjustment = new Vector3(Random.Range(-width, width), -5, 0);
+            return pos + adjustment;
+        }
+
+        private static IEnumerable<Area> FindAreaOfTemperature(TemperatureRating temperature)
+        {
+            var areas = AreaManager.instance.areas.Where(a => a.tempRating == temperature);
+            foreach (var area in areas)
+            {
+                yield return area;
+            }
+        }
+
+        internal static float RandomGameSeconds()
+        {
+            return Random.Range(Time.deltaTime * 3, Time.deltaTime * 5);
         }
     }
 }

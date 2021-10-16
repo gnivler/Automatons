@@ -17,7 +17,7 @@ namespace Automatons
     {
         private const string PluginGUID = "ca.gnivler.sheltered2.Automatons";
         private const string PluginName = "Automatons";
-        private const string PluginVersion = "1.2.2";
+        private const string PluginVersion = "1.3.1";
         private static string LogFile;
         private static bool dev;
 
@@ -27,35 +27,34 @@ namespace Automatons
         internal static ConfigEntry<bool> Repair;
         internal static ConfigEntry<bool> Exercise;
         internal static ConfigEntry<bool> Reading;
+        internal static ConfigEntry<bool> EnvironmentSeeking;
+        internal static ConfigEntry<bool> NeedRepairSkillToRepair;
+        internal static ConfigEntry<int> RepairThreshold;
         internal static ConfigEntry<int> FatigueThreshold;
         private static ConfigEntry<KeyboardShortcut> ToggleSingle;
         private static ConfigEntry<KeyboardShortcut> ToggleAll;
-
+        private static ConfigEntry<KeyboardShortcut> Clear;
 
         private void Awake()
         {
-            try
-            {
-                Harmony harmony = new("ca.gnivler.sheltered2.Automatons");
-                LogFile = Path.Combine(new FileInfo(Assembly.GetExecutingAssembly().Location).DirectoryName!, "log.txt");
-                dev = SystemInfo.deviceName == "MEOWMEOW";
-                Log("Automatons Startup");
-                harmony.PatchAll(typeof(Patches));
-                Firefighting = Config.Bind("Toggle Jobs", "Firefighting", true);
-                Farming = Config.Bind("Toggle Jobs", "Farming", true);
-                Traps = Config.Bind("Toggle Jobs", "Traps", true);
-                Repair = Config.Bind("Toggle Jobs", "Repair", true);
-                Exercise = Config.Bind("Toggle Jobs", "Exercise", true);
-                Reading = Config.Bind("Toggle Jobs", "Reading", true);
-                FatigueThreshold = Config.Bind("Adjustments", "Fatigue Threshold",
-                    50, new ConfigDescription("Survivors won't exercise or read if too fatigued.", new AcceptableValueRange<int>(0, 100)));
-                ToggleSingle = Config.Bind("Hotkey", "Toggle automation for selected survivor.", new KeyboardShortcut(KeyCode.Comma));
-                ToggleAll = Config.Bind("Hotkey", "Toggle automation for all survivors.", new KeyboardShortcut(KeyCode.Period));
-            }
-            catch (Exception ex)
-            {
-                FileLog.Log(ex.ToString());
-            }
+            Firefighting = Config.Bind("Toggle Jobs", "Firefighting", true);
+            Farming = Config.Bind("Toggle Jobs", "Farming", true);
+            Traps = Config.Bind("Toggle Jobs", "Traps", true);
+            Repair = Config.Bind("Toggle Jobs", "Repair", true);
+            Exercise = Config.Bind("Toggle Jobs", "Exercise", true);
+            Reading = Config.Bind("Toggle Jobs", "Reading", true);
+            EnvironmentSeeking = Config.Bind("Toggle Jobs", "Avoid idling in bad weather and inclement areas when possible", true);
+            NeedRepairSkillToRepair = Config.Bind("Adjustments", "Automatic Repairing skill needed to repair", true);
+            FatigueThreshold = Config.Bind("Adjustments", "Fatigue Threshold", 50, new ConfigDescription("Survivors won't exercise or read if too fatigued", new AcceptableValueRange<int>(0, 75)));
+            RepairThreshold = Config.Bind("Adjustments", "Repair Threshold", 25, new ConfigDescription("Survivors won't repair objects until they reach this percentage integrity", new AcceptableValueRange<int>(0, 90)));
+            ToggleSingle = Config.Bind("Hotkey", "Toggle automation for selected survivor", new KeyboardShortcut(KeyCode.Comma));
+            ToggleAll = Config.Bind("Hotkey", "Toggle automation for all survivors", new KeyboardShortcut(KeyCode.Period));
+            Clear = Config.Bind("Hotkey", "Emergency clear all object and member actions", new KeyboardShortcut(KeyCode.F8));
+            Harmony harmony = new("ca.gnivler.sheltered2.Automatons");
+            LogFile = Path.Combine(new FileInfo(Assembly.GetExecutingAssembly().Location).DirectoryName!, "log.txt");
+            dev = SystemInfo.deviceName == "MEOWMEOW";
+            Log("Automatons Startup");
+            harmony.PatchAll(typeof(Patches));
         }
 
         private void Update()
@@ -108,6 +107,39 @@ namespace Automatons
                 }
             }
 
+            if (Input.GetKeyDown(Clear.Value.MainKey)
+                && ToggleAll.Value.Modifiers.All(Input.GetKey))
+            {
+                if (ObjectManager.instance is not null)
+                {
+                    foreach (var obj in ObjectManager.instance.GetAllObjects().Where(o => o.interactions.Count > 0))
+                    {
+                        if (obj.interactions.Count > 0)
+                        {
+                            foreach (var interaction in obj.interactions)
+                            {
+                                interaction.CancelAllJobs();
+                            }
+                        }
+                    }
+                }
+
+                if (MemberManager.instance is not null)
+                {
+                    foreach (var member in MemberManager.instance.GetAllShelteredMembers())
+                    {
+                        Helper.ShowFloatie("Everything cleared!", member.baseCharacter);
+                        member.ForcefullyExitAnimationSubStates();
+                        member.StopAllCoroutines();
+                        member.CancelInvoke();
+                        member.member.CancelJobsImmediately();
+                        member.member.CancelAIJobsImmediately();
+                    }
+                }
+
+                return;
+            }
+
             if (!dev)
             {
                 return;
@@ -115,12 +147,20 @@ namespace Automatons
 
             if (Input.GetKeyDown(KeyCode.F5))
             {
+                try
+                {
+                }
+                catch (Exception ex)
+                {
+                    Log(ex);
+                }
             }
 
             if (Input.GetKeyDown(KeyCode.F6))
             {
                 ObjectManager.instance.GetAllObjects().Do(b =>
                 {
+                    MemberManager.instance.GetAllShelteredMembers().Do(m => Helper.ShowFloatie("All object interactions cleared", m.baseCharacter));
                     b.interactions.Do(i => Traverse.Create(i).Field<List<Member>>("interactionMembers").Value.Clear());
                     b.beingUsed = false;
                     b.interactions.Do(i => i.CancelAllJobs());
