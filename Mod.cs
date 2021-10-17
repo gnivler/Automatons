@@ -67,7 +67,7 @@ namespace Automatons
                 if (Helper.DisabledAutomatonSurvivors.Contains(member.member))
                 {
                     Helper.DisabledAutomatonSurvivors.Remove(member.member);
-                    Patches.ChooseNextAIActionPostfix(member.memberAI);
+                    //Patches.ChooseNextAIActionPostfix(member.memberAI);
                     Helper.ShowFloatie("Automation enabled", member.baseCharacter);
                     return;
                 }
@@ -88,7 +88,7 @@ namespace Automatons
                     Helper.DisabledAutomatonSurvivors.Clear();
                     MemberManager.instance.GetAllShelteredMembers().Select(m => m.memberAI).Do(m =>
                     {
-                        Patches.ChooseNextAIActionPostfix(m);
+                        //Patches.ChooseNextAIActionPostfix(m);
                         Helper.ShowFloatie("Automation enabled", m.memberRH.baseCharacter);
                     });
                     return;
@@ -126,9 +126,10 @@ namespace Automatons
 
                 if (MemberManager.instance is not null)
                 {
-                    foreach (var member in MemberManager.instance.GetAllShelteredMembers())
+                    foreach (var member in MemberManager.instance.currentMembers.Concat(SlaveManager.instance.m_currentSlaves))
                     {
                         Helper.ShowFloatie("Everything cleared!", member.baseCharacter);
+                        member.member.m_carriedFood = null;
                         member.ForcefullyExitAnimationSubStates();
                         member.StopAllCoroutines();
                         member.CancelInvoke();

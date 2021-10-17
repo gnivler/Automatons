@@ -3,7 +3,6 @@ using System.Linq;
 using HarmonyLib;
 using UnityEngine;
 using static Automatons.Helper;
-using Random = UnityEngine.Random;
 
 // ReSharper disable RedundantAssignment 
 // ReSharper disable InconsistentNaming
@@ -101,64 +100,64 @@ namespace Automatons
             return false;
         }
 
-        [HarmonyPatch(typeof(MemberAI), "ChooseNextAIAction")]
-        [HarmonyPostfix]
-        public static void ChooseNextAIActionPostfix(MemberAI __instance)
-        {
-            if (DisabledAutomatonSurvivors.Contains(__instance.memberRH.member))
-            {
-                return;
-            }
-
-            if (BreachManager.instance.inProgress || !MemberManager.instance.IsInitialSpawnComplete)
-            {
-                return;
-            }
-
-            var member = __instance.memberRH.member;
-            if (member.m_breakdownController.isHavingBreakdown
-                || member.OutOnExpedition
-                || !IsJobless(member))
-            {
-                return;
-            }
-
-            if (!WaitTimers.ContainsKey(__instance))
-            {
-                WaitTimers.Add(__instance, default);
-            }
-
-            WaitTimers[__instance] += Time.deltaTime;
-            var waitTime = RandomGameSeconds();
-            if (WaitTimers[__instance] < waitTime)
-            {
-                return;
-            }
-
-            WaitTimers[__instance] -= waitTime;
-
-            foreach (var jobMethod in ExtraJobs)
-            {
-                jobMethod.Invoke(null, new object[] { member });
-                if (!IsJobless(member))
-                {
-                    break;
-                }
-            }
-
-            AccessTools.Method(typeof(MemberAI), "EvaluateNeeds").Invoke(member.memberRH.memberAI, new object[] { });
-            member.memberRH.memberAI.FindNeedsJob();
-
-            if (IsJobless(member)
-                || lastState(member.memberRH.memberAI) is MemberAI.AiState.Idle or MemberAI.AiState.Wander)
-            {
-                lastState(member.memberRH.memberAI) = MemberAI.AiState.Rest;
-            }
-            else
-            {
-                Mod.Log($"{member.name} needs {member.memberRH.memberAI.lastState}");
-            }
-        }
+        //[HarmonyPatch(typeof(MemberAI), "ChooseNextAIAction")]
+        //[HarmonyPostfix]
+        //public static void ChooseNextAIActionPostfix(MemberAI __instance)
+        //{
+        //    if (DisabledAutomatonSurvivors.Contains(__instance.memberRH.member))
+        //    {
+        //        return;
+        //    }
+        //
+        //    if (BreachManager.instance.inProgress || !MemberManager.instance.IsInitialSpawnComplete)
+        //    {
+        //        return;
+        //    }
+        //
+        //    var member = __instance.memberRH.member;
+        //    if (member.m_breakdownController.isHavingBreakdown
+        //        || member.OutOnExpedition
+        //        || !IsJobless(member))
+        //    {
+        //        return;
+        //    }
+        //
+        //    if (!WaitTimers.ContainsKey(__instance))
+        //    {
+        //        WaitTimers.Add(__instance, default);
+        //    }
+        //
+        //    WaitTimers[__instance] += Time.deltaTime;
+        //    var waitTime = RandomGameSeconds();
+        //    if (WaitTimers[__instance] < waitTime)
+        //    {
+        //        return;
+        //    }
+        //
+        //    WaitTimers[__instance] -= waitTime;
+        //
+        //    foreach (var jobMethod in ExtraJobs)
+        //    {
+        //        jobMethod.Invoke(null, new object[] { member });
+        //        if (!IsJobless(member))
+        //        {
+        //            break;
+        //        }
+        //    }
+        //
+        //    AccessTools.Method(typeof(MemberAI), "EvaluateNeeds").Invoke(member.memberRH.memberAI, new object[] { });
+        //    member.memberRH.memberAI.FindNeedsJob();
+        //
+        //    if (IsJobless(member)
+        //        || lastState(member.memberRH.memberAI) is MemberAI.AiState.Idle or MemberAI.AiState.Wander)
+        //    {
+        //        lastState(member.memberRH.memberAI) = MemberAI.AiState.Rest;
+        //    }
+        //    else
+        //    {
+        //        Mod.Log($"{member.name} needs {member.memberRH.memberAI.lastState}");
+        //    }
+        //}
 
         [HarmonyPatch(typeof(Object_Planter), "Update")]
         [HarmonyPostfix]
@@ -198,38 +197,56 @@ namespace Automatons
             return false;
         }
 
-        [HarmonyPatch(typeof(ObjectInteraction_Base), "UpdateInteraction")]
-        public static void Postfix(ObjectInteraction_Base __instance, MemberReferenceHolder memberRH, bool __result)
-        {
-            if (!__result
-                && __instance.interactionType is InteractionTypes.InteractionType.ReadCharismaBook
-                    or InteractionTypes.InteractionType.ReadIntelligenceBook
-                    or InteractionTypes.InteractionType.ReadPerceptionBook
-                    or InteractionTypes.InteractionType.ReadStoryBook
-                    or InteractionTypes.InteractionType.Exercise)
-            {
-                if (!InteractionTimers.TryGetValue(memberRH.memberAI, out _))
-                {
-                    InteractionTimers.Add(memberRH.memberAI, default);
-                }
-
-                InteractionTimers[memberRH.memberAI] += Time.deltaTime;
-                if (InteractionTimers[memberRH.memberAI] < InteractionTickGameSeconds)
-                {
-                    return;
-                }
-
-                InteractionTimers[memberRH.memberAI] -= InteractionTickGameSeconds;
-                var job = memberRH.member.currentjob;
-                var storedCurrentJobCopy = new Job(memberRH, job.obj, job.objInteraction, job.targetTransform);
-                AccessTools.Method(typeof(MemberAI), "EvaluateNeeds").Invoke(memberRH.memberAI, new object[] { });
-                memberRH.memberAI.FindNeedsJob();
-                if (memberRH.memberAI.currentPriorityNeed is not NeedsStat.NeedsStatType.Max)
-                {
-                    memberRH.member.AddJob(storedCurrentJobCopy);
-                }
-            }
-        }
+        // allow needs to be checked while doing reading/exercise
+        //[HarmonyPatch(typeof(ObjectInteraction_Base), "UpdateInteraction")]
+        //public static void Postfix(ObjectInteraction_Base __instance, MemberReferenceHolder memberRH, bool __result)
+        //{
+        //    if (!__result
+        //        && __instance.interactionType is InteractionTypes.InteractionType.ReadCharismaBook
+        //            or InteractionTypes.InteractionType.ReadIntelligenceBook
+        //            or InteractionTypes.InteractionType.ReadPerceptionBook
+        //            or InteractionTypes.InteractionType.ReadStoryBook
+        //            or InteractionTypes.InteractionType.Exercise)
+        //    {
+        //        if (!InteractionTimers.TryGetValue(memberRH.memberAI, out _))
+        //        {
+        //            InteractionTimers.Add(memberRH.memberAI, default);
+        //        }
+        //
+        //        InteractionTimers[memberRH.memberAI] += Time.deltaTime;
+        //        if (InteractionTimers[memberRH.memberAI] < InteractionTickGameSeconds)
+        //        {
+        //            return;
+        //        }
+        //
+        //        InteractionTimers[memberRH.memberAI] -= InteractionTickGameSeconds;
+        //        var job = memberRH.member.currentjob;
+        //        var cachedJob = new Job(memberRH, job.obj, job.objInteraction, job.targetTransform);
+        //        foreach (var jobMethod in ExtraJobs)
+        //        {
+        //            jobMethod.Invoke(null, new object[] { memberRH.member });
+        //            if (!IsJobless(memberRH.member))
+        //            {
+        //                // take "exercise", copy it, stop the interaction, add the cached copy then proceed below
+        //                // to add the interaction
+        //                job = memberRH.member.currentjob;
+        //                var cachedJob2 = new Job(memberRH, job.obj, job.objInteraction, job.targetTransform);
+        //                memberRH.member.RequestCancelJob(0);
+        //                memberRH.member.AddJob(cachedJob2);
+        //                break;
+        //            }
+        //        }
+        //
+        //        if (memberRH.memberAI.currentPriorityNeed is not NeedsStat.NeedsStatType.Max)
+        //        {
+        //            AccessTools.Method(typeof(MemberAI), "EvaluateNeeds").Invoke(memberRH.memberAI, new object[] { });
+        //            memberRH.memberAI.FindNeedsJob();
+        //
+        //            // only place allowing 2 jobs
+        //            memberRH.member.AddJob(cachedJob);
+        //        }
+        //    }
+        //}
 
         [HarmonyPatch(typeof(CraftingPanel), "OnRecipeSlotPress")]
         [HarmonyPrefix]
@@ -241,6 +258,22 @@ namespace Automatons
                 {
                     ShelterInventoryManager.instance.inventory.AddItems(stack);
                 }
+            }
+        }
+
+        [HarmonyPatch(typeof(ObjectInteraction_CarryMeal), "SetFoodTaken"), HarmonyPrefix]
+        public static void SetFoodTaken(int id, ItemStack food, Dictionary<int, ItemStack> ___m_selectedFood)
+        {
+            ___m_selectedFood.Remove(id);
+        }
+
+        [HarmonyPatch(typeof(Member), "Awake"), HarmonyPostfix]
+        public static void MemberAwakePostfix(Member __instance)
+        {
+            if (__instance.name != "Sam Smith")
+            {
+                var automaton = __instance.gameObject.AddComponent<Automaton>();
+                automaton.Member = __instance;
             }
         }
     }
