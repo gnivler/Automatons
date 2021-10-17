@@ -126,9 +126,10 @@ namespace Automatons
 
                 if (MemberManager.instance is not null)
                 {
-                    foreach (var member in MemberManager.instance.GetAllShelteredMembers())
+                    foreach (var member in MemberManager.instance.currentMembers.Concat(SlaveManager.instance.m_currentSlaves))
                     {
                         Helper.ShowFloatie("Everything cleared!", member.baseCharacter);
+                        member.member.m_carriedFood = null;
                         member.ForcefullyExitAnimationSubStates();
                         member.StopAllCoroutines();
                         member.CancelInvoke();

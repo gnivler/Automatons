@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using static Automatons.Helper;
 
@@ -14,6 +15,5 @@ namespace Automatons
         {
             DoFirefighting();
         }
-
     }
 }

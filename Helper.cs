@@ -66,7 +66,8 @@ namespace Automatons
 
         internal static void DoEnvironmentSeeking(Member member)
         {
-            if (member.isOutside
+            if (member.aiQueueCount > 0
+                && member.isOutside
                 && WeatherManager.instance.weatherActive
                 && WeatherManager.instance.currentDaysWeather
                     is WeatherManager.WeatherState.BlackRain
@@ -77,7 +78,7 @@ namespace Automatons
                 Mod.Log($"Sending {member.name} out of the bad weather");
                 var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(AreaManager.instance.areas[1]));
                 member.jobQueue.Add(job);
-                member.currentjob = job;
+                //member.currentjob = job;
                 return;
             }
 
@@ -92,7 +93,7 @@ namespace Automatons
                     Mod.Log($"Sending {member.name} to better temperatures");
                     var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(area));
                     member.AddJob(job);
-                    member.currentjob = job;
+                    //member.currentjob = job;
                 }
             }
         }
@@ -104,7 +105,8 @@ namespace Automatons
                 return;
             }
 
-            if (member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
+            if (member.aiQueueCount > 0
+                || member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
             {
                 return;
             }
@@ -122,7 +124,7 @@ namespace Automatons
                     var exerciseInteraction = exerciseMachine.GetInteractionByType(InteractionTypes.InteractionType.Exercise);
                     var job = new Job(member.memberRH, exerciseMachine, exerciseInteraction, exerciseMachine.GetInteractionTransform(0));
                     member.AddJob(job);
-                    member.currentjob = job;
+                    //member.currentjob = job;
                     lastState(member.memberRH.memberAI) = MemberAI.AiState.Exercise;
                     break;
                 }
@@ -131,7 +133,8 @@ namespace Automatons
 
         internal static void DoFarming(Member member)
         {
-            if (!Mod.Farming.Value)
+            if (!Mod.Farming.Value
+                || member.aiQueueCount > 0)
             {
                 return;
             }
@@ -172,12 +175,13 @@ namespace Automatons
             var interaction = planter.GetComponent<T>();
             var job = new Job(member.memberRH, planter, interaction, planter.GetInteractionTransform(0));
             member.AddJob(job);
-            member.currentjob = job;
+            //member.currentjob = job;
         }
 
         internal static void DoFirefighting()
         {
-            if (!Mod.Firefighting.Value)
+            if (!Mod.Firefighting.Value
+                || !MemberManager.instance.IsInitialSpawnComplete)
             {
                 return;
             }
@@ -206,7 +210,9 @@ namespace Automatons
                 }
 
                 var nearestMember = GetNearestMembersToFire(burningObject.Key).FirstOrDefault(m =>
-                    m.member.currentjob?.jobInteractionType is not InteractionTypes.InteractionType.ExtinguishFire)?.member;
+                    !DisabledAutomatonSurvivors.Contains(m.member)
+                    && m.member.selectable
+                    && m.member.currentjob?.jobInteractionType is not InteractionTypes.InteractionType.ExtinguishFire)?.member;
                 if (nearestMember is not null)
                 {
                     Job job;
@@ -230,7 +236,7 @@ namespace Automatons
                     }
 
                     nearestMember.AddJob(job);
-                    nearestMember.currentjob = job;
+                    //nearestMember.currentjob = job;
                     JobUI.instance.UpdateJobIcons();
                     m_burnableObject(burningObject.Key).isBeingExtinguished = true;
                 }
@@ -239,7 +245,8 @@ namespace Automatons
 
         internal static void DoHarvestTraps(Member member)
         {
-            if (!Mod.Traps.Value)
+            if (!Mod.Traps.Value
+                || member.aiQueueCount > 0)
             {
                 return;
             }
@@ -258,7 +265,7 @@ namespace Automatons
                 Mod.Log($"Sending {member.name} to harvest snare trap {snareTrap.objectId}");
                 var job = new Job(member.memberRH, trapInteraction.obj, trapInteraction, snareTrap.GetInteractionTransform(0));
                 member.AddJob(job);
-                member.currentjob = job;
+                //member.currentjob = job;
                 break;
             }
         }
@@ -270,7 +277,8 @@ namespace Automatons
                 return;
             }
 
-            if (member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
+            if (member.aiQueueCount > 0
+                || member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
             {
                 return;
             }
@@ -311,7 +319,8 @@ namespace Automatons
 
         internal static void DoRepairObjects(Member member)
         {
-            if (!Mod.Repair.Value)
+            if (!Mod.Repair.Value
+                || member.aiQueueCount > 0)
             {
                 return;
             }
@@ -336,7 +345,7 @@ namespace Automatons
                 Mod.Log($"Sending {member.name} to repair {damagedObject.name} at {damagedObject.integrityNormalised * 100}");
                 var job = new Job(member.memberRH, damagedObject, damagedObject.GetComponent<ObjectInteraction_Repair>(), damagedObject.GetInteractionTransform(0));
                 member.AddJob(job);
-                member.currentjob = job;
+                //member.currentjob = job;
                 damagedObject.beingUsed = true;
                 lastState(member.memberRH.memberAI) = MemberAI.AiState.Repair;
             }
@@ -348,7 +357,9 @@ namespace Automatons
                 && !BurnableObjectsMap.All(b => b.Value.isBeingExtinguished))
             {
                 MemberManager.instance.GetAllShelteredMembers().Where(m =>
-                        !m.member.m_breakdownController.isHavingBreakdown
+                        !DisabledAutomatonSurvivors.Contains(m.member)
+                        && m.member.selectable
+                        && !m.member.m_breakdownController.isHavingBreakdown
                         && !m.member.OutOnExpedition
                         && m.member.jobQueueCount > 0)
                     .Do(m =>
@@ -514,7 +525,8 @@ namespace Automatons
 
         internal static bool IsJobless(Member memberToCheck)
         {
-            if (memberToCheck.jobQueueCount == 0)
+            if (memberToCheck.jobQueueCount == 0
+                && memberToCheck.aiQueueCount == 0)
             {
                 lastState(memberToCheck.memberRH.memberAI) = MemberAI.AiState.Idle;
                 return true;

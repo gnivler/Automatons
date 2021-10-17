@@ -198,6 +198,7 @@ namespace Automatons
             return false;
         }
 
+        // allow needs to be checked while doing reading/exercise
         [HarmonyPatch(typeof(ObjectInteraction_Base), "UpdateInteraction")]
         public static void Postfix(ObjectInteraction_Base __instance, MemberReferenceHolder memberRH, bool __result)
         {
@@ -221,12 +222,29 @@ namespace Automatons
 
                 InteractionTimers[memberRH.memberAI] -= InteractionTickGameSeconds;
                 var job = memberRH.member.currentjob;
-                var storedCurrentJobCopy = new Job(memberRH, job.obj, job.objInteraction, job.targetTransform);
-                AccessTools.Method(typeof(MemberAI), "EvaluateNeeds").Invoke(memberRH.memberAI, new object[] { });
-                memberRH.memberAI.FindNeedsJob();
+                var cachedJob = new Job(memberRH, job.obj, job.objInteraction, job.targetTransform);
+                foreach (var jobMethod in ExtraJobs)
+                {
+                    jobMethod.Invoke(null, new object[] { memberRH.member });
+                    if (!IsJobless(memberRH.member))
+                    {
+                        // take "exercise", copy it, stop the interaction, add the cached copy then proceed below
+                        // to add the interaction
+                        job = memberRH.member.currentjob;
+                        var cachedJob2 = new Job(memberRH, job.obj, job.objInteraction, job.targetTransform);
+                        memberRH.member.RequestCancelJob(0);
+                        memberRH.member.AddJob(cachedJob2);
+                        break;
+                    }
+                }
+
                 if (memberRH.memberAI.currentPriorityNeed is not NeedsStat.NeedsStatType.Max)
                 {
-                    memberRH.member.AddJob(storedCurrentJobCopy);
+                    AccessTools.Method(typeof(MemberAI), "EvaluateNeeds").Invoke(memberRH.memberAI, new object[] { });
+                    memberRH.memberAI.FindNeedsJob();
+
+                    // only place allowing 2 jobs
+                    memberRH.member.AddJob(cachedJob);
                 }
             }
         }
@@ -242,6 +260,12 @@ namespace Automatons
                     ShelterInventoryManager.instance.inventory.AddItems(stack);
                 }
             }
+        }
+
+        [HarmonyPatch(typeof(ObjectInteraction_CarryMeal), "SetFoodTaken"), HarmonyPrefix]
+        public static void SetFoodTaken(int id, ItemStack food, Dictionary<int, ItemStack> ___m_selectedFood)
+        {
+            ___m_selectedFood.Remove(id);
         }
     }
 }
