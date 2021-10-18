@@ -1,8 +1,10 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
+using UnityEngine.AI;
 using Random = UnityEngine.Random;
 
 // ReSharper disable InconsistentNaming
@@ -66,8 +68,8 @@ namespace Automatons
 
         internal static void DoEnvironmentSeeking(Member member)
         {
-            if (member.aiQueueCount > 0
-                && member.isOutside
+            if ( /*member.aiQueueCount > 0    wtf did I put this here for */
+                member.isOutside
                 && WeatherManager.instance.weatherActive
                 && WeatherManager.instance.currentDaysWeather
                     is WeatherManager.WeatherState.BlackRain
@@ -76,7 +78,7 @@ namespace Automatons
                     or WeatherManager.WeatherState.HeavySandStorm)
             {
                 Mod.Log($"Sending {member.name} out of the bad weather");
-                var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(AreaManager.instance.areas[1]));
+                var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(AreaManager.instance.areas[1], member));
                 member.jobQueue.Add(job);
                 //member.currentjob = job;
                 return;
@@ -91,7 +93,7 @@ namespace Automatons
                     && area != member.CurrentArea)
                 {
                     Mod.Log($"Sending {member.name} to better temperatures");
-                    var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(area));
+                    var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(area, member));
                     member.AddJob(job);
                     //member.currentjob = job;
                 }
@@ -332,7 +334,9 @@ namespace Automatons
                 return;
             }
 
-            var damagedObject = GetDamagedObjects().FirstOrDefault(o => !o.HasActiveInteractionMembers());
+            var damagedObject = GetDamagedObjects().OrderBy(o =>
+                    member.transform.position.PathDistanceTo(o.GetInteractionPoint(0)))
+                .FirstOrDefault(o => !o.HasActiveInteractionMembers());
             if (!damagedObject)
             {
                 return;
@@ -385,10 +389,9 @@ namespace Automatons
         private static IEnumerable<Object_Integrity> GetDamagedObjects()
         {
             return ObjectManager.instance.integrityObjects.Where(i =>
-                    !i.HasActiveInteractionMembers()
-                    && !i.IsWithinHoldingCell
-                    && i.integrityNormalised <= Mod.RepairThreshold.Value / 100f)
-                .OrderBy(i => i.integrityNormalised);
+                !i.HasActiveInteractionMembers()
+                && !i.IsWithinHoldingCell
+                && i.integrityNormalised <= Mod.RepairThreshold.Value / 100f);
         }
 
         private static Object_FireExtinguisher GetNearestExtinguisher(Object_Base burningObject)
@@ -576,12 +579,11 @@ namespace Automatons
                 "m_floatingTextPool").Value.ShowFloatingText(message, baseCharacter.transform.position + offset, Color.magenta);
         }
 
-        private static Vector3 ReturnAdjustedAreaPosition(Area area)
+        private static Vector3 ReturnAdjustedAreaPosition(Area area, Member member)
         {
-            var pos = area.transform.position;
             var width = area.areaCollider.size.x / 2 - 5;
-            var adjustment = new Vector3(Random.Range(-width, width), -5, 0);
-            return pos + adjustment;
+            NavMesh.SamplePosition(area.areaCollider.center + new Vector3(0, -member.transform.position.y, 0), out var hit, 5f, NavMesh.AllAreas);
+            return hit.position;//new Vector3(Random.Range(-width, width), hit.position.y, hit.position.z);
         }
 
         private static IEnumerable<Area> FindAreaOfTemperature(TemperatureRating temperature)

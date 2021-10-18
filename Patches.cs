@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
@@ -199,55 +200,67 @@ namespace Automatons
         }
 
         // allow needs to be checked while doing reading/exercise
-        [HarmonyPatch(typeof(ObjectInteraction_Base), "UpdateInteraction")]
-        public static void Postfix(ObjectInteraction_Base __instance, MemberReferenceHolder memberRH, bool __result)
+        //[HarmonyPatch(typeof(ObjectInteraction_Base), "UpdateInteraction"), HarmonyPostfix]
+        //public static void ObjectInteraction_BaseUpdateInteractionPostfix(ObjectInteraction_Base __instance, MemberReferenceHolder memberRH, bool __result)
+        //{
+        //    if (!__result
+        //        && BookInteractions.Contains(__instance.interactionType)
+        //        || __instance.interactionType == InteractionTypes.InteractionType.Exercise)
+        //    {
+        //        if (!InteractionTimers.TryGetValue(memberRH.memberAI, out _))
+        //        {
+        //            InteractionTimers.Add(memberRH.memberAI, default);
+        //        }
+        //
+        //        InteractionTimers[memberRH.memberAI] += Time.deltaTime;
+        //        if (InteractionTimers[memberRH.memberAI] < InteractionTickGameSeconds)
+        //        {
+        //            return;
+        //        }
+        //
+        //        InteractionTimers[memberRH.memberAI] -= InteractionTickGameSeconds;
+        //
+        //        foreach (var jobMethod in ExtraJobs)
+        //        {
+        //            var priorInteraction = memberRH.member.currentjob.jobInteractionType;
+        //            var job = memberRH.member.currentjob;
+        //            var interactionClone = new Job(job.memberRH, job.obj, job.objInteraction, job.targetTransform);
+        //
+        //            //if (!IsJobless(memberRH.member))
+        //            if (memberRH.member.jobQueueCount == 0)
+        //            {
+        //                Mod.Log($"{memberRH.name} invoking {jobMethod.Name}");
+        //                jobMethod.Invoke(null, new object[] { memberRH.member });
+        //            }
+        //
+        //            //if (memberRH.member.currentjob.jobInteractionType is InteractionTypes.InteractionType.Exercise
+        //            //    || BookInteractions.Contains(memberRH.member.currentjob.jobInteractionType)
+        //            //    && priorInteraction == memberRH.member.currentjob.jobInteractionType
+        //            //    && memberRH.member.jobQueueCount == 1)
+        //            //{
+        //            //    //memberRH.member.RequestCancelJob(0);
+        //            //    //memberRH.member.AddJob(interactionClone);
+        //            //    //JobUI.instance.UpdateJobIcons();
+        //            //    continue;
+        //            //}
+        //        }
+        //    }
+        //}
+
+        [HarmonyPatch(typeof(BookManager), "Start"), HarmonyPostfix]
+        public static void BookManagerAwakePostfix()
         {
-            if (!__result
-                && __instance.interactionType is InteractionTypes.InteractionType.ReadCharismaBook
-                    or InteractionTypes.InteractionType.ReadIntelligenceBook
-                    or InteractionTypes.InteractionType.ReadPerceptionBook
-                    or InteractionTypes.InteractionType.ReadStoryBook
-                    or InteractionTypes.InteractionType.Exercise)
+            foreach (var enumType in Enum.GetValues(typeof(InteractionTypes.InteractionType)))
             {
-                if (!InteractionTimers.TryGetValue(memberRH.memberAI, out _))
+                if (enumType.ToString().Contains("Read"))
                 {
-                    InteractionTimers.Add(memberRH.memberAI, default);
-                }
-
-                InteractionTimers[memberRH.memberAI] += Time.deltaTime;
-                if (InteractionTimers[memberRH.memberAI] < InteractionTickGameSeconds)
-                {
-                    return;
-                }
-
-                InteractionTimers[memberRH.memberAI] -= InteractionTickGameSeconds;
-                var job = memberRH.member.currentjob;
-                var cachedJob = new Job(memberRH, job.obj, job.objInteraction, job.targetTransform);
-                foreach (var jobMethod in ExtraJobs)
-                {
-                    jobMethod.Invoke(null, new object[] { memberRH.member });
-                    if (!IsJobless(memberRH.member))
-                    {
-                        // take "exercise", copy it, stop the interaction, add the cached copy then proceed below
-                        // to add the interaction
-                        job = memberRH.member.currentjob;
-                        var cachedJob2 = new Job(memberRH, job.obj, job.objInteraction, job.targetTransform);
-                        memberRH.member.RequestCancelJob(0);
-                        memberRH.member.AddJob(cachedJob2);
-                        break;
-                    }
-                }
-
-                if (memberRH.memberAI.currentPriorityNeed is not NeedsStat.NeedsStatType.Max)
-                {
-                    AccessTools.Method(typeof(MemberAI), "EvaluateNeeds").Invoke(memberRH.memberAI, new object[] { });
-                    memberRH.memberAI.FindNeedsJob();
-
-                    // only place allowing 2 jobs
-                    memberRH.member.AddJob(cachedJob);
+                    BookInteractions.Add((InteractionTypes.InteractionType)enumType);
                 }
             }
         }
+
+
+        private static List<InteractionTypes.InteractionType> BookInteractions = new();
 
         [HarmonyPatch(typeof(CraftingPanel), "OnRecipeSlotPress")]
         [HarmonyPrefix]
