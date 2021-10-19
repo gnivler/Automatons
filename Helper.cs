@@ -1,10 +1,11 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.AI;
-using Object = System.Object;
+using Random = UnityEngine.Random;
 
 // ReSharper disable InconsistentNaming
 
@@ -12,16 +13,16 @@ namespace Automatons
 {
     public static class Helper
     {
-        internal static readonly HashSet<Member> DisabledAutomatonSurvivors = new();
         internal static readonly Dictionary<Object_Base, BurnableObject> BurnableObjectsMap = new();
-        internal static readonly HashSet<Object_Planter> PlantersToFarm = new();
+        internal static readonly HashSet<Member> DisabledAutomatonSurvivors = new();
+        private static readonly Dictionary<Member, float> MemberTimers = new();
+        private static readonly HashSet<Object_Planter> PlantersToFarm = new();
+        private static readonly Dictionary<Object_Planter, float> PlanterTimers = new();
         internal static readonly HashSet<ObjectInteraction_HarvestTrap> Traps = new();
+        private const int WaitDuration = 3;
 
-        internal static readonly AccessTools.FieldRef<MemberAI, MemberAI.AiState> lastState =
+        private static readonly AccessTools.FieldRef<MemberAI, MemberAI.AiState> lastState =
             AccessTools.FieldRefAccess<MemberAI, MemberAI.AiState>("lastState");
-
-        private static readonly AccessTools.FieldRef<Object_Base, BurnableObject> m_burnableObject =
-            AccessTools.FieldRefAccess<Object_Base, BurnableObject>("m_burnableObject");
 
         private static readonly AccessTools.FieldRef<BaseCharacter, Vector3> m_healthLossFloatingTextOffset =
             AccessTools.FieldRefAccess<BaseCharacter, Vector3>("m_healthLossFloatingTextOffset");
@@ -29,7 +30,7 @@ namespace Automatons
         private static readonly AccessTools.FieldRef<Object_SnareTrap, int> trappedAnimalID =
             AccessTools.FieldRefAccess<Object_SnareTrap, int>("trappedAnimalID");
 
-        internal static IEnumerable<MethodInfo> ExtraJobs
+        private static IEnumerable<MethodInfo> ExtraJobs
         {
             get
             {
@@ -65,10 +66,17 @@ namespace Automatons
             }
         }
 
-        internal static void DoEnvironmentSeeking(Member member, bool insertFirst = true)
+        internal static void ClearGlobals()
         {
-            if (member.aiQueueCount > 0
-                && member.isOutside
+            DisabledAutomatonSurvivors.Clear();
+            BurnableObjectsMap.Clear();
+            PlantersToFarm.Clear();
+            Traps.Clear();
+        }
+
+        internal static void DoEnvironmentSeeking(Member member)
+        {
+            if (member.isOutside
                 && WeatherManager.instance.weatherActive
                 && WeatherManager.instance.currentDaysWeather
                     is WeatherManager.WeatherState.BlackRain
@@ -77,23 +85,12 @@ namespace Automatons
                     or WeatherManager.WeatherState.HeavySandStorm)
             {
                 Mod.Log($"Sending {member.name} out of the bad weather");
-                var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(AreaManager.instance.areas[1], member));
-                if (insertFirst)
-                {
-                    member.jobQueue.Insert(0, job);
-                    member.currentjob = member.jobQueue[0];
-                    JobUI.instance.UpdateJobIcons(true);
-                }
-                else
-                {
-                    member.AddJob(job);
-                }
-
-                //member.currentjob = job;
+                var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(AreaManager.instance.areas[1]));
+                member.AddJob(job);
                 return;
             }
 
-            if (member.currentTemperature is not TemperatureRating.Okay or TemperatureRating.Warm)
+            if (member.CurrentArea.tempRating is not TemperatureRating.Okay or TemperatureRating.Warm)
             {
                 var area = FindAreaOfTemperature(TemperatureRating.Okay).FirstOrDefault()
                            ?? FindAreaOfTemperature(TemperatureRating.Warm).FirstOrDefault();
@@ -102,36 +99,21 @@ namespace Automatons
                     && area != member.CurrentArea)
                 {
                     Mod.Log($"Sending {member.name} to better temperatures");
-                    var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(area, member));
-                    if (insertFirst)
-                    {
-                        member.jobQueue.Insert(0, job);
-                        member.currentjob = member.jobQueue[0];
-                        JobUI.instance.UpdateJobIcons(true);
-                    }
-                    else
-                    {
-                        member.AddJob(job);
-                    }
-                    //member.currentjob = job;
+                    var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(area));
+                    member.AddJob(job);
                 }
             }
         }
 
-        internal static void DoExercise(Member member, bool insertFirst = true)
+        internal static void DoExercise(Member member)
         {
-            if (!Mod.Exercise.Value)
-            {
-                return;
-            }
-
-            if (member.aiQueueCount > 0
+            if (!member.HasEmptyQueues()
                 || member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
             {
                 return;
             }
 
-            var equipment = ObjectManager.instance.GetObjectsOfCategory(ObjectManager.ObjectCategory.ExerciseMachine);
+            var equipment = ObjectManager.instance.GetObjectsOfCategory(ObjectManager.ObjectCategory.ExerciseMachine).Where(o => o.Status is Object_Base.ObjectStatus.Neutral).ToList();
             equipment.Shuffle();
             foreach (var objectBase in equipment.Where(e => !e.isBroken))
             {
@@ -140,153 +122,125 @@ namespace Automatons
                     && (exerciseMachine.InLevelRange(member.memberRH)
                         || exerciseMachine.InLevelRangeFortitude(member.memberRH)))
                 {
-                    Mod.Log($"Sending {member.name} to exercise at {exerciseMachine.name} with {member.needs.fatigue.NormalizedValue * 100} fatigue");
+                    Mod.Log($"Sending {member.name} to exercise at {exerciseMachine.name} with {member.needs.fatigue.NormalizedValue * 100:f1}% fatigue");
                     var exerciseInteraction = exerciseMachine.GetInteractionByType(InteractionTypes.InteractionType.Exercise);
                     var job = new Job(member.memberRH, exerciseMachine, exerciseInteraction, exerciseMachine.GetInteractionTransform(0));
-                    if (insertFirst)
-                    {
-                        member.jobQueue.Insert(0, job);
-                        member.currentjob = member.jobQueue[0];
-                        JobUI.instance.UpdateJobIcons(true);
-                    }
-                    else
-                    {
-                        member.AddJob(job);
-                    }
-                    //member.currentjob = job;
-
-                    lastState(member.memberRH.memberAI) = MemberAI.AiState.Exercise;
+                    member.AddJob(job);
                     break;
                 }
             }
         }
 
-        internal static Job DoFarming(Member member, bool insertFirst = true)
+        internal static void DoFarming(Member member)
         {
-            if (!Mod.Farming.Value
-                || member.aiQueueCount > 0)
+            if (!member.HasEmptyQueues())
             {
-                return null;
+                return;
             }
 
-            foreach (var planter in PlantersToFarm.Where(p => !p.HasActiveInteractionMembers()))
+            foreach (var planter in PlantersToFarm.Where(p =>
+                p.Status is Object_Base.ObjectStatus.Neutral
+                && !p.HasActiveInteractionMembers()))
             {
                 if (planter.CurrentWaterLevel > 0)
                 {
-                    return DoFarmingJob<ObjectInteraction_HarvestPlant>(planter, member);
+                    DoFarmingJob<ObjectInteraction_HarvestPlant>(planter, member);
+                    return;
                 }
 
                 if (WaterManager.instance.storedWater >= 1)
                 {
-                    return DoFarmingJob<ObjectInteraction_WaterPlant>(planter, member);
+                    DoFarmingJob<ObjectInteraction_WaterPlant>(planter, member);
+                    return;
                 }
             }
-
-            return null;
         }
 
-        private static Job DoFarmingJob<T>(Object_Base planter, Member member, bool insertFirst = true) where T : ObjectInteraction_Base
+        private static void DoFarmingJob<T>(Object_Base planter, Member member) where T : ObjectInteraction_Base
         {
             if (typeof(T) == typeof(ObjectInteraction_WaterPlant)
                 && planter.IsSurfaceObject
                 && WeatherManager.instance.IsRaining())
             {
-                return null;
+                return;
             }
 
             if (typeof(T) == typeof(ObjectInteraction_HarvestPlant)
                 && planter.IsSurfaceObject
                 && IsBadWeather())
             {
-                return null;
+                return;
             }
 
-            Mod.Log($"Sending {member.name} to {planter.name} - {typeof(T)}");
+            Mod.Log($"Sending {member.name} to {planter} - {typeof(T)}");
             var interaction = planter.GetComponent<T>();
             var job = new Job(member.memberRH, planter, interaction, planter.GetInteractionTransform(0));
-            if (insertFirst)
-            {
-                member.jobQueue.Insert(0, job);
-                member.currentjob = member.jobQueue[0];
-                JobUI.instance.UpdateJobIcons(true);
-            }
-            else
-            {
-                member.AddJob(job);
-            }
-
-            return member.currentjob;
+            member.AddJob(job);
         }
 
-        internal static void DoFirefighting()
+        private static void DoFirefighting(Member member)
         {
-            if (!Mod.Firefighting.Value
-                || !MemberManager.instance.IsInitialSpawnComplete)
+            try
             {
-                return;
-            }
-
-            for (var index = 0; index < BurnableObjectsMap.Count; index++)
-            {
-                var element = BurnableObjectsMap.ElementAt(index);
-                if (!element.Key.isBurnable)
+                if (!Mod.Firefighting.Value
+                    || !MemberManager.instance.IsInitialSpawnComplete
+                    || DisabledAutomatonSurvivors.Contains(member))
                 {
-                    BurnableObjectsMap.Remove(element.Key);
-                }
-            }
-
-            if (BurnableObjectsMap.Values.All(b => !b.isBurning || b.isBeingExtinguished))
-            {
-                return;
-            }
-
-            ClearJobsForFirefighting();
-            foreach (var burningObject in BurnableObjectsMap)
-            {
-                if (!burningObject.Value.isBurning
-                    || m_burnableObject(burningObject.Key).isBeingExtinguished)
-                {
-                    continue;
+                    return;
                 }
 
-                var nearestMember = GetNearestMembersToFire(burningObject.Key).FirstOrDefault(m =>
-                    !DisabledAutomatonSurvivors.Contains(m.member)
-                    && m.member.selectable
-                    && m.member.currentjob?.jobInteractionType is not InteractionTypes.InteractionType.ExtinguishFire)?.member;
-                if (nearestMember is not null)
+                if (member.currentjob?.jobInteractionType is InteractionTypes.InteractionType.ExtinguishFire)
                 {
+                    return;
+                }
+
+                foreach (var burningObject in BurnableObjectsMap.Values.Where(v => v is not null))
+                {
+                    if (!burningObject.isBurning
+                        || burningObject.isBeingExtinguished)
+                    {
+                        continue;
+                    }
+
+                    Mod.Log($"{burningObject.name} is burning and not being extinguished");
                     Job job;
-                    var extinguishingSource = GetNearestExtinguisher(burningObject.Key);
+                    var extinguishingSource = GetNearestExtinguisher(burningObject.obj);
                     if (extinguishingSource is not null)
                     {
-                        Mod.Log($"Sending {nearestMember.name} to {burningObject.Key.name} with extinguisher");
+                        Mod.Log($"Sending {member.name} to {burningObject.name} with extinguisher");
                         extinguishingSource.beingUsed = true;
-                        var interaction = burningObject.Key.GetComponent<ObjectInteraction_UseFireExtinguisher>();
+                        var interaction = burningObject.GetComponent<ObjectInteraction_UseFireExtinguisher>();
                         job = new Job_UseFireExtinguisher(
-                            nearestMember.memberRH, interaction, burningObject.Key, extinguishingSource.GetInteractionTransform(0), extinguishingSource);
+                            member.memberRH, interaction, burningObject.obj, extinguishingSource.GetInteractionTransform(0), extinguishingSource);
                     }
                     else
                     {
-                        Mod.Log($"Sending {nearestMember.name} to extinguish {burningObject.Key.name}");
-                        var interaction = burningObject.Key.GetComponent<ObjectInteraction_ExtinguishFire>();
+                        Mod.Log($"Sending {member.name} to extinguish {burningObject.name}");
+                        var interaction = burningObject.GetComponent<ObjectInteraction_ExtinguishFire>();
                         var butt = ObjectManager.instance.GetNearestObjectOfType(
-                            ObjectManager.ObjectType.SmallWaterButt, burningObject.Key.GetInteractionTransform(0).position);
+                            ObjectManager.ObjectType.SmallWaterButt, burningObject.obj.GetInteractionTransform(0).position);
                         job = new Job_ExtinguishFire(
-                            nearestMember.memberRH, interaction, burningObject.Key, butt.GetInteractionTransform(0), butt);
+                            member.memberRH, interaction, burningObject.obj, butt.GetInteractionTransform(0), butt);
                     }
 
-                    nearestMember.AddJob(job);
-                    //nearestMember.currentjob = job;
-                    JobUI.instance.UpdateJobIcons();
-                    m_burnableObject(burningObject.Key).isBeingExtinguished = true;
+                    Mod.Log("Cancelling jobs");
+                    member.CancelJobsImmediately();
+                    member.CancelAIJobsImmediately();
+                    member.AddJob(job);
+                    //JobUI.instance.UpdateJobIcons();
+                    burningObject.isBeingExtinguished = true;
+                    break;
                 }
+            }
+            catch (Exception ex)
+            {
+                Mod.Log(ex);
             }
         }
 
-        internal static void DoHarvestTraps(Member member, bool insertFirst = true)
+        internal static void DoHarvestTraps(Member member)
         {
-            if (!Mod.Traps.Value
-                || member.aiQueueCount > 0)
+            if (!member.HasEmptyQueues())
             {
                 return;
             }
@@ -304,37 +258,23 @@ namespace Automatons
 
                 Mod.Log($"Sending {member.name} to harvest snare trap {snareTrap.objectId}");
                 var job = new Job(member.memberRH, trapInteraction.obj, trapInteraction, snareTrap.GetInteractionTransform(0));
-                if (insertFirst)
-                {
-                    member.jobQueue.Insert(0, job);
-                    member.currentjob = member.jobQueue[0];
-                    JobUI.instance.UpdateJobIcons(true);
-                }
-                else
-                {
-                    member.AddJob(job);
-                }
-                //member.currentjob = job;
-
+                member.AddJob(job);
                 break;
             }
         }
 
-        internal static void DoReading(Member member, bool insertFirst = true)
+        internal static void DoReading(Member member)
         {
-            if (!Mod.Reading.Value)
-            {
-                return;
-            }
-
-            if (member.aiQueueCount > 0
+            if (!member.HasEmptyQueues()
                 || member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
             {
                 return;
             }
 
             var bookCases = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Bookshelf);
-            foreach (var bookCase in bookCases.Where(b => !b.HasActiveInteractionMembers()))
+            foreach (var bookCase in bookCases.Where(b =>
+                b.Status is Object_Base.ObjectStatus.Neutral
+                && !b.HasActiveInteractionMembers()))
             {
                 ObjectInteraction_Base objectInteractionBase = default;
                 while (objectInteractionBase is null)
@@ -360,27 +300,16 @@ namespace Automatons
                     continue;
                 }
 
-                Mod.Log($"Sending {member.name} to {objectInteractionBase.interactionType}");
+                Mod.Log($"Sending {member.name} to {objectInteractionBase.interactionType} with {member.needs.fatigue.NormalizedValue * 100:f1} fatigue");
                 var job = new Job(member.memberRH, bookCase, objectInteractionBase, bookCase.GetInteractionTransform(0));
-                if (insertFirst)
-                {
-                    member.jobQueue.Insert(0, job);
-                    member.currentjob = member.jobQueue[0];
-                    JobUI.instance.UpdateJobIcons(true);
-                }
-                else
-                {
-                    member.AddJob(job);
-                }
-
+                member.AddJob(job);
                 break;
             }
         }
 
-        internal static void DoRepairObjects(Member member, bool insertFirst = true)
+        internal static void DoRepairObjects(Member member)
         {
-            if (!Mod.Repair.Value
-                || member.aiQueueCount > 0)
+            if (!member.HasEmptyQueues())
             {
                 return;
             }
@@ -392,8 +321,10 @@ namespace Automatons
                 return;
             }
 
-            var damagedObject = GetDamagedObjects().FirstOrDefault(o => !o.HasActiveInteractionMembers());
-            if (!damagedObject)
+            var damagedObject = GetDamagedObjects().OrderBy(o =>
+                    o.transform.position.PathDistanceTo(member.transform.position))
+                .FirstOrDefault(o => !o.HasActiveInteractionMembers());
+            if (damagedObject is null)
             {
                 return;
             }
@@ -402,55 +333,71 @@ namespace Automatons
                 || damagedObject.IsSurfaceObject
                 && !IsBadWeather())
             {
-                Mod.Log($"Sending {member.name} to repair {damagedObject.name} at {damagedObject.integrityNormalised * 100}");
-                var job = new Job(member.memberRH, damagedObject, damagedObject.GetComponent<ObjectInteraction_Repair>(), damagedObject.GetInteractionTransform(0));
-                //var existingJob = new Job(job.memberRH, job.obj, job.objInteraction, job.targetTransform);
-                if (insertFirst)
-                {
-                    member.jobQueue.Insert(0, job);
-                    member.currentjob = member.jobQueue[0];
-                    JobUI.instance.UpdateJobIcons(true);
-                }
-                else
-                {
-                    member.AddJob(job);
-                }
-
-                //member.currentjob = job;
+                Mod.Log($"Sending {member.name} to repair {damagedObject.name} at {damagedObject.integrityNormalised * 100:f1}%");
+                var inter = damagedObject.GetComponent<ObjectInteraction_Repair>();
+                var job = new Job(member.memberRH, damagedObject, inter, damagedObject.interactions[0].transform);
+                member.AddJob(job);
                 damagedObject.beingUsed = true;
                 lastState(member.memberRH.memberAI) = MemberAI.AiState.Repair;
             }
         }
 
-        private static void ClearJobsForFirefighting()
+        private static IEnumerable<Area> FindAreaOfTemperature(TemperatureRating temperature)
         {
-            if (BurnableObjectsMap.Any(b => b.Value.isBurning)
-                && !BurnableObjectsMap.All(b => b.Value.isBeingExtinguished))
+            var areas = AreaManager.instance.areas.Where(a => a.tempRating == temperature);
+            foreach (var area in areas)
             {
-                MemberManager.instance.GetAllShelteredMembers().Where(m =>
-                        !DisabledAutomatonSurvivors.Contains(m.member)
-                        && m.member.selectable
-                        && !m.member.m_breakdownController.isHavingBreakdown
-                        && !m.member.OutOnExpedition
-                        && m.member.jobQueueCount > 0)
-                    .Do(m =>
-                    {
-                        if (m.member.currentjob?.jobInteractionType is not InteractionTypes.InteractionType.ExtinguishFire)
-                        {
-                            Mod.Log($"Cancelling jobs for {m.name}");
-                            m.member.CancelAIJobsImmediately();
-                            m.member.CancelJobsImmediately();
-                        }
-                    });
+                if (area.isSurfaceArea && IsBadWeather())
+                {
+                    continue;
+                }
+
+                yield return area;
             }
         }
 
-        internal static void ClearGlobals()
+        internal static void FindJob(Member member)
         {
-            DisabledAutomatonSurvivors.Clear();
-            BurnableObjectsMap.Clear();
-            PlantersToFarm.Clear();
-            Traps.Clear();
+            if (member.currentjob?.jobInteractionType is InteractionTypes.InteractionType.ExtinguishFire)
+            {
+                return;
+            }
+
+            if (BurnableObjectsMap.Any(o => o.Key.isBurning && !o.Key.isBurntOut && !o.Value.isBeingExtinguished))
+            {
+                Mod.Log("FindJobs cancel jobs");
+                member.CancelJobsImmediately();
+                member.CancelAIJobsImmediately();
+                DoFirefighting(member);
+                return;
+            }
+
+            if (member.currentjob is not null)
+            {
+                return;
+            }
+
+            foreach (var methodInfo in ExtraJobs)
+            {
+                if (member.HasEmptyQueues())
+                {
+                    AccessTools.Method(typeof(MemberAI), "EvaluateNeeds").Invoke(member.memberRH.memberAI, new object[] { });
+                    member.memberRH.memberAI.FindNeedsJob();
+                    if (!member.HasEmptyQueues())
+                    {
+                        break;
+                    }
+                }
+
+                if (member.HasEmptyQueues())
+                {
+                    methodInfo.Invoke(null, new object[] { member });
+                    if (!member.HasEmptyQueues())
+                    {
+                        break;
+                    }
+                }
+            }
         }
 
         private static IEnumerable<Object_Integrity> GetDamagedObjects()
@@ -468,7 +415,10 @@ namespace Automatons
             Object_FireExtinguisher nearestExtinguisher = default;
             var closest = float.MaxValue;
             var burningTransform = burningObject.GetInteractionTransform(0);
-            foreach (var extinguisher in extinguishers.Where(e => !e.HasActiveInteractionMembers()))
+            foreach (var extinguisher in extinguishers.Where(e =>
+                e.Status is Object_Base.ObjectStatus.Neutral
+                && ((Object_FireExtinguisher)e).CurrentUses > 0
+                && !e.HasActiveInteractionMembers()))
             {
                 var extinguisherDistanceToFire = extinguisher.transform.position.PathDistanceTo(burningTransform.position);
                 if (extinguisherDistanceToFire < closest)
@@ -479,16 +429,6 @@ namespace Automatons
             }
 
             return nearestExtinguisher;
-        }
-
-        private static List<MemberReferenceHolder> GetNearestMembersToFire(Object_Base burningObject)
-        {
-            return MemberManager.instance.GetAllShelteredMembers()
-                .Where(m =>
-                    !m.member.m_breakdownController.isHavingBreakdown
-                    && !m.member.OutOnExpedition)
-                .OrderBy(m => m.member.transform.position.PathDistanceTo(
-                    burningObject.GetInteractionTransform(0).position)).ToList();
         }
 
         private static bool HasGoodBook(ItemDef.BookType type, Member member)
@@ -594,16 +534,31 @@ namespace Automatons
                        or WeatherManager.WeatherState.LightThunderStorm;
         }
 
-        internal static bool IsJobless(Member memberToCheck)
+        internal static void MaintainPlantersList(Object_Planter __instance)
         {
-            if (memberToCheck.jobQueueCount <= 1
-                && memberToCheck.aiQueueCount <= 1)
+            const float waitTime = 0.25f;
+            var planter = __instance;
+            if (!PlanterTimers.TryGetValue(planter, out _))
             {
-                lastState(memberToCheck.memberRH.memberAI) = MemberAI.AiState.Idle;
-                return true;
+                PlanterTimers.Add(planter, default);
             }
 
-            return false;
+            PlanterTimers[planter] += Time.deltaTime;
+            if (PlanterTimers[planter] < waitTime)
+            {
+                return;
+            }
+
+            PlanterTimers[planter] -= waitTime;
+            if (planter.GStage is not Object_Planter.GrowingStage.NoSeed
+                && planter.CurrentWaterLevel <= 0
+                || planter.GStage == Object_Planter.GrowingStage.Harvestable)
+            {
+                PlantersToFarm.Add(planter);
+                return;
+            }
+
+            PlantersToFarm.Remove(planter);
         }
 
         private static void MinMaxLevels(int bookLevel, out int min, out int max)
@@ -640,34 +595,52 @@ namespace Automatons
             }
         }
 
+        internal static bool ReadyToDoJob(Member member)
+        {
+            if (DisabledAutomatonSurvivors.Contains(member))
+            {
+                return false;
+            }
+
+            if (BreachManager.instance is null
+                || BreachManager.instance.inProgress
+                || MemberManager.instance is null
+                || !MemberManager.instance.IsInitialSpawnComplete)
+            {
+                return false;
+            }
+
+            if (!MemberTimers.ContainsKey(member))
+            {
+                MemberTimers.Add(member, default);
+            }
+
+            MemberTimers[member] += Time.deltaTime;
+            var variance = Random.Range(0, 2f);
+            if (MemberTimers[member] < WaitDuration + variance)
+            {
+                return false;
+            }
+
+            MemberTimers[member] -= WaitDuration + variance;
+            return true;
+        }
+
+        private static Vector3 ReturnAdjustedAreaPosition(Area area)
+        {
+            // todo vary X, reduce sample distance?!
+            //var width = area.areaCollider.bounds.extents.x;
+            var position = area.transform.position;
+            NavMesh.SamplePosition(position, out var hit, 50f, -1);
+            return hit.position;
+            // :O
+        }
+
         internal static void ShowFloatie(string message, BaseCharacter baseCharacter)
         {
             var offset = m_healthLossFloatingTextOffset(baseCharacter);
             Traverse.Create(baseCharacter).Field<FloatingTextPool_Shelter>(
                 "m_floatingTextPool").Value.ShowFloatingText(message, baseCharacter.transform.position + offset, Color.magenta);
-        }
-
-        private static Vector3 ReturnAdjustedAreaPosition(Area area, Member member)
-        {
-            var pos = area.transform.position;
-            var width = area.areaCollider.size.x / 2 - 5;
-            NavMesh.SamplePosition(member.transform.position, out var hit, 5f, -1);
-            var adjustment = new Vector3(Random.Range(-width, width), hit.position.y, 0);
-            return pos + adjustment;
-        }
-
-        private static IEnumerable<Area> FindAreaOfTemperature(TemperatureRating temperature)
-        {
-            var areas = AreaManager.instance.areas.Where(a => a.tempRating == temperature);
-            foreach (var area in areas)
-            {
-                yield return area;
-            }
-        }
-
-        internal static float RandomGameSeconds()
-        {
-            return Random.Range(Time.deltaTime * 3, Time.deltaTime * 5);
         }
     }
 }

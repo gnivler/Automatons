@@ -23,5 +23,10 @@ namespace Automatons
         {
             return objectBase.interactions.Any(i => i.InteractionMemberCount != 0);
         }
+
+        internal static bool HasEmptyQueues(this Member member)
+        {
+            return !member.OutOnExpedition && member.selectable && member.jobQueueCount + member.aiQueueCount == 0;
+        }
     }
 }

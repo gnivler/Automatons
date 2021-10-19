@@ -17,7 +17,7 @@ namespace Automatons
     {
         private const string PluginGUID = "ca.gnivler.sheltered2.Automatons";
         private const string PluginName = "Automatons";
-        private const string PluginVersion = "1.3.1";
+        private const string PluginVersion = "1.4.0";
         private static string LogFile;
         private static bool dev;
 
@@ -150,6 +150,12 @@ namespace Automatons
             {
                 try
                 {
+                    QuestManager.instance.SpawnFactionQuestWithId("CTKMobStage3");
+                    //QuestManager.instance.m_currentQuests.Where(q => q.IsActive()).Do(q =>
+                    //{
+                    //    Log($"{q.definition.id}");
+                    //    q.FinishQuest(true);
+                    //});
                 }
                 catch (Exception ex)
                 {
