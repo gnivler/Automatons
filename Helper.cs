@@ -13,7 +13,7 @@ namespace Automatons
 {
     public static class Helper
     {
-        internal static readonly Dictionary<Object_Base, BurnableObject> BurnableObjectsMap = new();
+        internal static readonly HashSet<BurnableObject> BurnableObjects = new();
         internal static readonly HashSet<Member> DisabledAutomatonSurvivors = new();
         private static readonly Dictionary<Member, float> MemberTimers = new();
         private static readonly HashSet<Object_Planter> PlantersToFarm = new();
@@ -49,6 +49,11 @@ namespace Automatons
                     yield return AccessTools.Method(typeof(Helper), nameof(DoRepairObjects));
                 }
 
+                if (Mod.SolarCleaning.Value)
+                {
+                    yield return AccessTools.Method(typeof(Helper), nameof(DoSolarPanelCleaning));
+                }
+
                 if (Mod.Exercise.Value)
                 {
                     yield return AccessTools.Method(typeof(Helper), nameof(DoExercise));
@@ -69,39 +74,48 @@ namespace Automatons
         internal static void ClearGlobals()
         {
             DisabledAutomatonSurvivors.Clear();
-            BurnableObjectsMap.Clear();
+            BurnableObjects.Clear();
             PlantersToFarm.Clear();
             Traps.Clear();
         }
 
         internal static void DoEnvironmentSeeking(Member member)
         {
-            if (member.isOutside
-                && WeatherManager.instance.weatherActive
-                && WeatherManager.instance.currentDaysWeather
-                    is WeatherManager.WeatherState.BlackRain
-                    or WeatherManager.WeatherState.SandStorm
-                    or WeatherManager.WeatherState.LightSandStorm
-                    or WeatherManager.WeatherState.HeavySandStorm)
+            try
             {
-                Mod.Log($"Sending {member.name} out of the bad weather");
-                var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(AreaManager.instance.areas[1]));
-                member.AddJob(job);
-                return;
-            }
-
-            if (member.CurrentArea.tempRating is not TemperatureRating.Okay or TemperatureRating.Warm)
-            {
-                var area = FindAreaOfTemperature(TemperatureRating.Okay).FirstOrDefault()
-                           ?? FindAreaOfTemperature(TemperatureRating.Warm).FirstOrDefault();
-
-                if (area is not null
-                    && area != member.CurrentArea)
+                if (member.isOutside
+                    && WeatherManager.instance is not null
+                    && WeatherManager.instance.weatherActive
+                    && WeatherManager.instance.currentDaysWeather
+                        is WeatherManager.WeatherState.BlackRain
+                        or WeatherManager.WeatherState.SandStorm
+                        or WeatherManager.WeatherState.LightSandStorm
+                        or WeatherManager.WeatherState.HeavySandStorm)
                 {
-                    Mod.Log($"Sending {member.name} to better temperatures");
-                    var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(area));
+                    Mod.Log($"Sending {member.name} out of the bad weather");
+                    var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(AreaManager.instance.areas[1]));
                     member.AddJob(job);
+                    return;
                 }
+
+                if (member.currentTemperature is not TemperatureRating.Okay or TemperatureRating.Warm)
+                {
+                    var area = FindAreaOfTemperature(TemperatureRating.Okay).FirstOrDefault()
+                               ?? FindAreaOfTemperature(TemperatureRating.Warm).FirstOrDefault()
+                               ?? FindAreaOfTemperature(TemperatureRating.Cold).FirstOrDefault();
+                    if (area is not null
+                        && area != member.CurrentArea
+                        && area.tempRating != member.CurrentArea.tempRating)
+                    {
+                        Mod.Log($"Sending {member.name} to better temperatures");
+                        var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(area));
+                        member.AddJob(job);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Mod.Log(ex);
             }
         }
 
@@ -113,7 +127,7 @@ namespace Automatons
                 return;
             }
 
-            var equipment = ObjectManager.instance.GetObjectsOfCategory(ObjectManager.ObjectCategory.ExerciseMachine).Where(o => o.Status is Object_Base.ObjectStatus.Neutral).ToList();
+            var equipment = ObjectManager.instance.GetObjectsOfCategory(ObjectManager.ObjectCategory.ExerciseMachine).ToList();
             equipment.Shuffle();
             foreach (var objectBase in equipment.Where(e => !e.isBroken))
             {
@@ -138,9 +152,7 @@ namespace Automatons
                 return;
             }
 
-            foreach (var planter in PlantersToFarm.Where(p =>
-                p.Status is Object_Base.ObjectStatus.Neutral
-                && !p.HasActiveInteractionMembers()))
+            foreach (var planter in PlantersToFarm.Where(p => !p.HasActiveInteractionMembers()))
             {
                 if (planter.CurrentWaterLevel > 0)
                 {
@@ -194,7 +206,7 @@ namespace Automatons
                     return;
                 }
 
-                foreach (var burningObject in BurnableObjectsMap.Values.Where(v => v is not null))
+                foreach (var burningObject in BurnableObjects)
                 {
                     if (!burningObject.isBurning
                         || burningObject.isBeingExtinguished)
@@ -272,9 +284,7 @@ namespace Automatons
             }
 
             var bookCases = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Bookshelf);
-            foreach (var bookCase in bookCases.Where(b =>
-                b.Status is Object_Base.ObjectStatus.Neutral
-                && !b.HasActiveInteractionMembers()))
+            foreach (var bookCase in bookCases.Where(b => !b.HasActiveInteractionMembers()))
             {
                 ObjectInteraction_Base objectInteractionBase = default;
                 while (objectInteractionBase is null)
@@ -290,8 +300,7 @@ namespace Automatons
                         ItemDef.BookType.Charisma when HasGoodBook(ItemDef.BookType.Charisma, member) => bookCase.GetComponent<ObjectInteraction_ReadCharismaBook>(),
                         ItemDef.BookType.Intelligence when HasGoodBook(ItemDef.BookType.Intelligence, member) => bookCase.GetComponent<ObjectInteraction_ReadIntelligenceBook>(),
                         ItemDef.BookType.Perception when HasGoodBook(ItemDef.BookType.Perception, member) => bookCase.GetComponent<ObjectInteraction_ReadPerceptionBook>(),
-                        // ReSharper disable once ExpressionIsAlwaysNull
-                        _ => objectInteractionBase
+                        _ => null
                     };
                 }
 
@@ -309,11 +318,6 @@ namespace Automatons
 
         internal static void DoRepairObjects(Member member)
         {
-            if (!member.HasEmptyQueues())
-            {
-                return;
-            }
-
             var hasRepairSkill = member.profession.PerceptionSkills.ContainsKey(ProfessionsManager.ProfessionSkillType.AutomaticRepairing);
             if (Mod.NeedRepairSkillToRepair.Value
                 && !hasRepairSkill)
@@ -321,24 +325,49 @@ namespace Automatons
                 return;
             }
 
-            var damagedObject = GetDamagedObjects().OrderBy(o =>
-                    o.transform.position.PathDistanceTo(member.transform.position))
-                .FirstOrDefault(o => !o.HasActiveInteractionMembers());
-            if (damagedObject is null)
-            {
-                return;
-            }
+            var damagedObjects = ObjectManager.instance.integrityObjects.Where(i =>
+                    !i.IsWithinHoldingCell
+                    && i.integrityNormalised <= Mod.RepairThreshold.Value / 100f
+                    && !i.HasActiveInteractionMembers()
+                    && !i.beingUsed)
+                .OrderBy(i => i.transform.position.PathDistanceTo(member.transform.position));
 
-            if (!damagedObject.IsSurfaceObject
-                || damagedObject.IsSurfaceObject
-                && !IsBadWeather())
+            foreach (var damagedObject in damagedObjects)
             {
-                Mod.Log($"Sending {member.name} to repair {damagedObject.name} at {damagedObject.integrityNormalised * 100:f1}%");
-                var inter = damagedObject.GetComponent<ObjectInteraction_Repair>();
-                var job = new Job(member.memberRH, damagedObject, inter, damagedObject.interactions[0].transform);
-                member.AddJob(job);
-                damagedObject.beingUsed = true;
-                lastState(member.memberRH.memberAI) = MemberAI.AiState.Repair;
+                if (!damagedObject.IsSurfaceObject
+                    || damagedObject.IsSurfaceObject
+                    && !IsBadWeather())
+                {
+                    Mod.Log($"Sending {member.name} to repair {damagedObject.name} at {damagedObject.integrityNormalised * 100:f1}%");
+                    var inter = damagedObject.GetComponent<ObjectInteraction_Repair>();
+                    var job = new Job(member.memberRH, damagedObject, inter, damagedObject.GetInteractionTransform(0));
+                    member.AddJob(job);
+                    damagedObject.beingUsed = true;
+                    break;
+                }
+            }
+        }
+
+        private static void DoSolarPanelCleaning(Member member)
+        {
+            var panels = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.SolarPanel);
+            foreach (var obj in panels.OrderBy(p => p.transform.position.PathDistanceTo(member.transform.position)))
+            {
+                if (obj.beingUsed
+                    || obj.IsSurfaceObject
+                    && IsBadWeather())
+                {
+                    continue;
+                }
+
+                var panel = (Object_SolarPanel)obj;
+                if (panel.dustPercent >= Mod.CleaningThreshold.Value)
+                {
+                    Mod.Log($"Sending {member.name} to clean solar panel");
+                    var job = new Job(member.memberRH, obj, panel.GetComponent<ObjectInteraction_CleanSolarPanel>(), obj.GetInteractionTransform(0));
+                    member.AddJob(job);
+                    panel.beingUsed = true;
+                }
             }
         }
 
@@ -363,7 +392,12 @@ namespace Automatons
                 return;
             }
 
-            if (BurnableObjectsMap.Any(o => o.Key.isBurning && !o.Key.isBurntOut && !o.Value.isBeingExtinguished))
+            var burning = BurnableObjects.Where(b =>
+                b.isBurning && !b.isBurntOut && !b.isBeingExtinguished).ToList();
+            if (BreachManager.instance.inProgress
+                && !burning.All(b => b.obj.IsSurfaceObject)
+                || !BreachManager.instance.inProgress
+                && burning.Any())
             {
                 Mod.Log("FindJobs cancel jobs");
                 member.CancelJobsImmediately();
@@ -379,34 +413,29 @@ namespace Automatons
 
             foreach (var methodInfo in ExtraJobs)
             {
-                if (member.HasEmptyQueues())
+                if (member.HasEmptyQueues()
+                    && member.currentjob is null)
                 {
                     AccessTools.Method(typeof(MemberAI), "EvaluateNeeds").Invoke(member.memberRH.memberAI, new object[] { });
                     member.memberRH.memberAI.FindNeedsJob();
                     if (!member.HasEmptyQueues())
                     {
+                        Mod.Log($"{member.name} found needs job {member.currentjob?.jobInteractionType}");
                         break;
                     }
                 }
 
-                if (member.HasEmptyQueues())
+                if (member.HasEmptyQueues()
+                    && member.currentjob is null)
                 {
                     methodInfo.Invoke(null, new object[] { member });
-                    if (!member.HasEmptyQueues())
+                    if (!member.HasEmptyQueues()
+                        || member.currentjob is not null)
                     {
                         break;
                     }
                 }
             }
-        }
-
-        private static IEnumerable<Object_Integrity> GetDamagedObjects()
-        {
-            return ObjectManager.instance.integrityObjects.Where(i =>
-                    !i.HasActiveInteractionMembers()
-                    && !i.IsWithinHoldingCell
-                    && i.integrityNormalised <= Mod.RepairThreshold.Value / 100f)
-                .OrderBy(i => i.integrityNormalised);
         }
 
         private static Object_FireExtinguisher GetNearestExtinguisher(Object_Base burningObject)
@@ -416,7 +445,7 @@ namespace Automatons
             var closest = float.MaxValue;
             var burningTransform = burningObject.GetInteractionTransform(0);
             foreach (var extinguisher in extinguishers.Where(e =>
-                e.Status is Object_Base.ObjectStatus.Neutral
+                e.Status is not Object_Base.ObjectStatus.Construction
                 && ((Object_FireExtinguisher)e).CurrentUses > 0
                 && !e.HasActiveInteractionMembers()))
             {
@@ -597,15 +626,8 @@ namespace Automatons
 
         internal static bool ReadyToDoJob(Member member)
         {
-            if (DisabledAutomatonSurvivors.Contains(member))
-            {
-                return false;
-            }
-
-            if (BreachManager.instance is null
-                || BreachManager.instance.inProgress
-                || MemberManager.instance is null
-                || !MemberManager.instance.IsInitialSpawnComplete)
+            if (DisabledAutomatonSurvivors.Contains(member)
+                || member.OutOnExpedition)
             {
                 return false;
             }
@@ -628,10 +650,10 @@ namespace Automatons
 
         private static Vector3 ReturnAdjustedAreaPosition(Area area)
         {
-            // todo vary X, reduce sample distance?!
-            //var width = area.areaCollider.bounds.extents.x;
+            var width = area.areaCollider.bounds.extents.x;
             var position = area.transform.position;
             NavMesh.SamplePosition(position, out var hit, 50f, -1);
+            hit.position += new Vector3(Random.Range(-width, width), 0, 0);
             return hit.position;
             // :O
         }

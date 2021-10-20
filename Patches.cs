@@ -68,6 +68,33 @@ namespace Automatons
             ___m_selectedFood.Remove(id);
         }
 
+        [HarmonyPatch(typeof(ObjectManager), "GetNearestObjectsOfType")]
+        [HarmonyPrefix]
+        public static bool ObjectManagerGetNearestObjectsOfTypePrefix(ref bool __runOriginal, ref List<Object_Base> __result,
+            Dictionary<ObjectManager.ObjectType, List<Object_Base>> ___objects, ObjectManager.ObjectType type, Vector3 pos)
+        {
+            __runOriginal = false;
+            var objectsOfType = ___objects[type];
+            objectsOfType.Sort((left, right) => CompareFloats(left.transform.position.PathDistanceTo(pos), right.transform.position.PathDistanceTo(pos)));
+            __result = objectsOfType;
+            return false;
+
+            int CompareFloats(float left, float right)
+            {
+                if (left < right)
+                {
+                    return -1;
+                }
+
+                if (left > right)
+                {
+                    return 1;
+                }
+
+                return 0;
+            }
+        }
+
         [HarmonyPatch(typeof(ObjectManager), "GetNearestObjectOfType")]
         [HarmonyPrefix]
         public static bool ObjectManagerGetNearestObjectOfTypePrefix(ref bool __runOriginal, ref Object_Base __result, ObjectManager.ObjectType type, Vector3 pos)
@@ -85,34 +112,11 @@ namespace Automatons
         }
 
         // way faster than FireManager.GetAllBurnableObjects()
-        [HarmonyPatch(typeof(Object_Base), "Awake")]
+        [HarmonyPatch(typeof(BurnableObject), "Awake")]
         [HarmonyPostfix]
-        public static void Object_BaseAwakePostfixBurnableObject(Object_Base __instance)
+        public static void BurnableObjectAwakePostfix(BurnableObject __instance)
         {
-            if (__instance.isBurnable)
-            {
-                var burnable = __instance.GetComponent<BurnableObject>();
-                if (burnable is not null)
-                {
-                    if (!BurnableObjectsMap.ContainsKey(__instance))
-                    {
-                        Mod.Log($"Adding burnable {burnable.name}");
-                        BurnableObjectsMap.Add(__instance, burnable);
-                    }
-                }
-            }
-        }
-
-        // bugfix
-        [HarmonyPatch(typeof(Object_Base), "ChooseValidInteractionPoint")]
-        [HarmonyPostfix]
-        public static void Object_BaseChooseValidInteractionPointPostfix(Object_Base __instance, ref Transform __result)
-        {
-            if (!__result)
-            {
-                Mod.Log("Bugfix - No interaction points on " + __instance.name);
-                __result = __instance.interactions[0].transform;
-            }
+            BurnableObjects.Add(__instance);
         }
 
         [HarmonyPatch(typeof(Object_Planter), "Update")]
@@ -130,12 +134,19 @@ namespace Automatons
             return false;
         }
 
+        [HarmonyPatch(typeof(MemberAI), "Awake")]
+        [HarmonyPostfix]
+        public static void MemberAIAwakePatch(MemberAI __instance)
+        {
+            var go = __instance.gameObject.AddComponent<InteractionNeeds>();
+            go.Member = __instance.memberRH.member;
+        }
+
         [HarmonyPatch(typeof(Member), "Update")]
         [HarmonyPostfix]
         public static void MemberUpdatePostfix(Member __instance)
         {
-            if (__instance.OutOnExpedition
-                || !ReadyToDoJob(__instance))
+            if (!ReadyToDoJob(__instance))
             {
                 return;
             }

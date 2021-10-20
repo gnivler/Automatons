@@ -26,7 +26,9 @@ namespace Automatons
 
         internal static bool HasEmptyQueues(this Member member)
         {
-            return !member.OutOnExpedition && member.selectable && member.jobQueueCount + member.aiQueueCount == 0;
+            return !member.OutOnExpedition
+                   && member.selectable
+                   && member.jobQueueCount + member.aiQueueCount == 0;
         }
     }
 }
