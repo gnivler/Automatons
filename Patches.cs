@@ -1,10 +1,8 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
 using UnityEngine;
 using static Automatons.Helper;
-using Random = UnityEngine.Random;
 
 // ReSharper disable RedundantAssignment 
 // ReSharper disable InconsistentNaming
@@ -14,11 +12,22 @@ namespace Automatons
     public static class Patches
     {
         internal static bool Cheat;
-        private static readonly Dictionary<MemberAI, float> WaitTimers = new();
-        private static readonly Dictionary<Object_Planter, float> PlanterTimers = new();
-        private static readonly Dictionary<MemberAI, float> InteractionTimers = new();
-        private const float InteractionTickGameSeconds = 30;
 
+        // cheat
+        [HarmonyPatch(typeof(CraftingPanel), "OnRecipeSlotPress")]
+        [HarmonyPrefix]
+        public static void CraftingPanelOnRecipeSlotPressPrefix(RecipeSlot recipeSlot)
+        {
+            if (Cheat)
+            {
+                foreach (var stack in recipeSlot.recipe.ingredients)
+                {
+                    ShelterInventoryManager.instance.inventory.AddItems(stack);
+                }
+            }
+        }
+
+        // bugfix
         [HarmonyPatch(typeof(ObjectInteraction_Base), "RegisterForInteraction")]
         [HarmonyPrefix]
         public static bool ObjectInteraction_BaseRegisterForInteractionPrefix(ObjectInteraction_Base __instance,
@@ -44,35 +53,6 @@ namespace Automatons
             return false;
         }
 
-        [HarmonyPatch(typeof(Object_Base), "ChooseValidInteractionPoint")]
-        [HarmonyPostfix]
-        public static void Object_BaseChooseValidInteractionPointPostfix(Object_Base __instance, ref Transform __result)
-        {
-            if (!__result)
-            {
-                Mod.Log("Bugfix - No interaction points on " + __instance.name);
-                __result = __instance.GetInteractionTransform(0);
-            }
-        }
-
-        // way faster than FireManager.GetAllBurnableObjects()
-        [HarmonyPatch(typeof(Object_Base), "Awake")]
-        [HarmonyPostfix]
-        public static void Object_BaseAwakePostfixBurnableObject(Object_Base __instance)
-        {
-            if (__instance.isBurnable)
-            {
-                BurnableObjectsMap.Add(__instance, __instance.GetComponent<BurnableObject>());
-            }
-        }
-
-        [HarmonyPatch(typeof(FireManager), "Awake")]
-        [HarmonyPostfix]
-        public static void FireManagerAwakePost(FireManager __instance)
-        {
-            __instance.gameObject.AddComponent<FireTick>();
-        }
-
         [HarmonyPatch(typeof(ObjectInteraction_HarvestTrap), "Awake")]
         [HarmonyPostfix]
         public static void ObjectInteraction_HarvestTrapAwakePostfix(ObjectInteraction_HarvestTrap __instance)
@@ -80,114 +60,39 @@ namespace Automatons
             Traps.Add(__instance);
         }
 
-        [HarmonyPatch(typeof(SaveManager), "LoadFromCurrentSlot")]
-        [HarmonyPostfix]
-        public static void SaveManagerLoadFromCurrentSlotPostfix()
-        {
-            ClearGlobals();
-        }
-
-        [HarmonyPatch(typeof(OptionsPanel), "OnQuitToMainMenuConfirm")]
-        [HarmonyPostfix]
-        public static void OptionsPanelOnQuitToMainMenuConfirmPostfix()
-        {
-            ClearGlobals();
-        }
-
-        [HarmonyPatch(typeof(MemberAI), "Wander")]
+        // bugfix
+        [HarmonyPatch(typeof(ObjectInteraction_CarryMeal), "SetFoodTaken")]
         [HarmonyPrefix]
-        public static bool WanderPrefix(ref bool __runOriginal)
+        public static void ObjectInteraction_CarryMealSetFoodTakenPrefix(int id, ItemStack food, Dictionary<int, ItemStack> ___m_selectedFood)
+        {
+            ___m_selectedFood.Remove(id);
+        }
+
+        [HarmonyPatch(typeof(ObjectManager), "GetNearestObjectsOfType")]
+        [HarmonyPrefix]
+        public static bool ObjectManagerGetNearestObjectsOfTypePrefix(ref bool __runOriginal, ref List<Object_Base> __result,
+            Dictionary<ObjectManager.ObjectType, List<Object_Base>> ___objects, ObjectManager.ObjectType type, Vector3 pos)
         {
             __runOriginal = false;
+            var objectsOfType = ___objects[type];
+            objectsOfType.Sort((left, right) => CompareFloats(left.transform.position.PathDistanceTo(pos), right.transform.position.PathDistanceTo(pos)));
+            __result = objectsOfType;
             return false;
-        }
 
-        [HarmonyPatch(typeof(MemberAI), "ChooseNextAIAction")]
-        [HarmonyPostfix]
-        public static void ChooseNextAIActionPostfix(MemberAI __instance)
-        {
-            if (DisabledAutomatonSurvivors.Contains(__instance.memberRH.member))
+            int CompareFloats(float left, float right)
             {
-                return;
-            }
-
-            if (BreachManager.instance.inProgress || !MemberManager.instance.IsInitialSpawnComplete)
-            {
-                return;
-            }
-
-            var member = __instance.memberRH.member;
-            if (member.m_breakdownController.isHavingBreakdown
-                || member.OutOnExpedition
-                || !IsJobless(member))
-            {
-                return;
-            }
-
-            if (!WaitTimers.ContainsKey(__instance))
-            {
-                WaitTimers.Add(__instance, default);
-            }
-
-            WaitTimers[__instance] += Time.deltaTime;
-            var waitTime = RandomGameSeconds();
-            if (WaitTimers[__instance] < waitTime)
-            {
-                return;
-            }
-
-            WaitTimers[__instance] -= waitTime;
-
-            foreach (var jobMethod in ExtraJobs)
-            {
-                jobMethod.Invoke(null, new object[] { member });
-                if (!IsJobless(member))
+                if (left < right)
                 {
-                    break;
+                    return -1;
                 }
-            }
 
-            AccessTools.Method(typeof(MemberAI), "EvaluateNeeds").Invoke(member.memberRH.memberAI, new object[] { });
-            member.memberRH.memberAI.FindNeedsJob();
+                if (left > right)
+                {
+                    return 1;
+                }
 
-            if (IsJobless(member)
-                || lastState(member.memberRH.memberAI) is MemberAI.AiState.Idle or MemberAI.AiState.Wander)
-            {
-                lastState(member.memberRH.memberAI) = MemberAI.AiState.Rest;
+                return 0;
             }
-            else
-            {
-                Mod.Log($"{member.name} needs {member.memberRH.memberAI.lastState}");
-            }
-        }
-
-        [HarmonyPatch(typeof(Object_Planter), "Update")]
-        [HarmonyPostfix]
-        public static void Object_PlanterUpdatePostfix(Object_Planter __instance)
-        {
-            const float waitTime = 0.25f;
-            var planter = __instance;
-            if (!PlanterTimers.TryGetValue(planter, out _))
-            {
-                PlanterTimers.Add(planter, default);
-            }
-
-            PlanterTimers[planter] += Time.deltaTime;
-            if (PlanterTimers[planter] < waitTime)
-            {
-                return;
-            }
-
-            PlanterTimers[planter] -= waitTime;
-            if (planter.GStage is not Object_Planter.GrowingStage.NoSeed
-                && planter.CurrentWaterLevel <= 0
-                || planter.GStage == Object_Planter.GrowingStage.Harvestable)
-            {
-                PlantersToFarm.Add(planter);
-                return;
-            }
-
-            PlantersToFarm.Remove(planter);
         }
 
         [HarmonyPatch(typeof(ObjectManager), "GetNearestObjectOfType")]
@@ -199,86 +104,61 @@ namespace Automatons
             return false;
         }
 
-        // allow needs to be checked while doing reading/exercise
-        //[HarmonyPatch(typeof(ObjectInteraction_Base), "UpdateInteraction"), HarmonyPostfix]
-        //public static void ObjectInteraction_BaseUpdateInteractionPostfix(ObjectInteraction_Base __instance, MemberReferenceHolder memberRH, bool __result)
-        //{
-        //    if (!__result
-        //        && BookInteractions.Contains(__instance.interactionType)
-        //        || __instance.interactionType == InteractionTypes.InteractionType.Exercise)
-        //    {
-        //        if (!InteractionTimers.TryGetValue(memberRH.memberAI, out _))
-        //        {
-        //            InteractionTimers.Add(memberRH.memberAI, default);
-        //        }
-        //
-        //        InteractionTimers[memberRH.memberAI] += Time.deltaTime;
-        //        if (InteractionTimers[memberRH.memberAI] < InteractionTickGameSeconds)
-        //        {
-        //            return;
-        //        }
-        //
-        //        InteractionTimers[memberRH.memberAI] -= InteractionTickGameSeconds;
-        //
-        //        foreach (var jobMethod in ExtraJobs)
-        //        {
-        //            var priorInteraction = memberRH.member.currentjob.jobInteractionType;
-        //            var job = memberRH.member.currentjob;
-        //            var interactionClone = new Job(job.memberRH, job.obj, job.objInteraction, job.targetTransform);
-        //
-        //            //if (!IsJobless(memberRH.member))
-        //            if (memberRH.member.jobQueueCount == 0)
-        //            {
-        //                Mod.Log($"{memberRH.name} invoking {jobMethod.Name}");
-        //                jobMethod.Invoke(null, new object[] { memberRH.member });
-        //            }
-        //
-        //            //if (memberRH.member.currentjob.jobInteractionType is InteractionTypes.InteractionType.Exercise
-        //            //    || BookInteractions.Contains(memberRH.member.currentjob.jobInteractionType)
-        //            //    && priorInteraction == memberRH.member.currentjob.jobInteractionType
-        //            //    && memberRH.member.jobQueueCount == 1)
-        //            //{
-        //            //    //memberRH.member.RequestCancelJob(0);
-        //            //    //memberRH.member.AddJob(interactionClone);
-        //            //    //JobUI.instance.UpdateJobIcons();
-        //            //    continue;
-        //            //}
-        //        }
-        //    }
-        //}
-
-        [HarmonyPatch(typeof(BookManager), "Start"), HarmonyPostfix]
-        public static void BookManagerAwakePostfix()
+        [HarmonyPatch(typeof(OptionsPanel), "OnQuitToMainMenuConfirm")]
+        [HarmonyPostfix]
+        public static void OptionsPanelOnQuitToMainMenuConfirmPostfix()
         {
-            foreach (var enumType in Enum.GetValues(typeof(InteractionTypes.InteractionType)))
-            {
-                if (enumType.ToString().Contains("Read"))
-                {
-                    BookInteractions.Add((InteractionTypes.InteractionType)enumType);
-                }
-            }
+            ClearGlobals();
         }
 
+        // way faster than FireManager.GetAllBurnableObjects()
+        [HarmonyPatch(typeof(BurnableObject), "Awake")]
+        [HarmonyPostfix]
+        public static void BurnableObjectAwakePostfix(BurnableObject __instance)
+        {
+            BurnableObjects.Add(__instance);
+        }
 
-        private static List<InteractionTypes.InteractionType> BookInteractions = new();
+        [HarmonyPatch(typeof(Object_Planter), "Update")]
+        [HarmonyPostfix]
+        public static void Object_PlanterUpdatePostfix(Object_Planter __instance)
+        {
+            MaintainPlantersList(__instance);
+        }
 
-        [HarmonyPatch(typeof(CraftingPanel), "OnRecipeSlotPress")]
+        [HarmonyPatch(typeof(MemberAI), "Wander")]
         [HarmonyPrefix]
-        public static void CraftingPanelOnRecipeSlotPressPrefix(RecipeSlot recipeSlot)
+        public static bool MemberAIWanderPrefix(ref bool __runOriginal)
         {
-            if (Cheat)
-            {
-                foreach (var stack in recipeSlot.recipe.ingredients)
-                {
-                    ShelterInventoryManager.instance.inventory.AddItems(stack);
-                }
-            }
+            __runOriginal = false;
+            return false;
         }
 
-        [HarmonyPatch(typeof(ObjectInteraction_CarryMeal), "SetFoodTaken"), HarmonyPrefix]
-        public static void SetFoodTaken(int id, ItemStack food, Dictionary<int, ItemStack> ___m_selectedFood)
+        [HarmonyPatch(typeof(MemberAI), "Awake")]
+        [HarmonyPostfix]
+        public static void MemberAIAwakePatch(MemberAI __instance)
         {
-            ___m_selectedFood.Remove(id);
+            var go = __instance.gameObject.AddComponent<InteractionNeeds>();
+            go.Member = __instance.memberRH.member;
+        }
+
+        [HarmonyPatch(typeof(Member), "Update")]
+        [HarmonyPostfix]
+        public static void MemberUpdatePostfix(Member __instance)
+        {
+            if (!ReadyToDoJob(__instance))
+            {
+                return;
+            }
+
+            FindJob(__instance);
+        }
+
+        [HarmonyPatch(typeof(SaveManager), "LoadFromCurrentSlot")]
+        [HarmonyPostfix]
+        public static void SaveManagerLoadFromCurrentSlotPostfix()
+        {
+            ClearGlobals();
         }
     }
 }
