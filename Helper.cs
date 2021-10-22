@@ -565,18 +565,14 @@ namespace Automatons
                        or WeatherManager.WeatherState.LightThunderStorm;
         }
 
-        private static Stopwatch T = new();
-
         private static List<Object_Base> GetAllPlanters()
         {
-            T.Restart();
             List<Object_Base> result = new();
             result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Planter));
             result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.EfficientPlanter));
             result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.HydroponicPlanter));
             result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.SmallPlanter));
             result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.SurfacePlanter));
-            Mod.Log(T.ElapsedTicks);
             return result;
         }
 
