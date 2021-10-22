@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -16,8 +17,6 @@ namespace Automatons
         internal static readonly HashSet<BurnableObject> BurnableObjects = new();
         internal static readonly HashSet<Member> DisabledAutomatonSurvivors = new();
         private static readonly Dictionary<Member, float> MemberTimers = new();
-        private static readonly HashSet<Object_Planter> PlantersToFarm = new();
-        private static readonly Dictionary<Object_Planter, float> PlanterTimers = new();
         internal static readonly HashSet<ObjectInteraction_HarvestTrap> Traps = new();
         private const int WaitDuration = 3;
 
@@ -64,6 +63,11 @@ namespace Automatons
                     yield return AccessTools.Method(typeof(Helper), nameof(DoReading));
                 }
 
+                if (Mod.ShelterCleaning.Value)
+                {
+                    yield return AccessTools.Method(typeof(Helper), nameof(DoShelterCleaning));
+                }
+
                 if (Mod.EnvironmentSeeking.Value)
                 {
                     yield return AccessTools.Method(typeof(Helper), nameof(DoEnvironmentSeeking));
@@ -75,47 +79,64 @@ namespace Automatons
         {
             DisabledAutomatonSurvivors.Clear();
             BurnableObjects.Clear();
-            PlantersToFarm.Clear();
             Traps.Clear();
+        }
+
+        internal static void DoShelterCleaning(Member member)
+        {
+            if (!member.HasEmptyQueues()
+                || member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
+            {
+                return;
+            }
+
+            var manager = AreaManager.instance;
+            var mop = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Mop).FirstOrDefault(m => !m.beingUsed);
+            if (mop is not null
+                && (manager.CalculateDirtValue(mop.currentArea) > Mod.ShelterCleaningThreshold.Value
+                    || mop.currentArea.surroundingAreas.Any(a => manager.CalculateDirtValue(a) > Mod.ShelterCleaningThreshold.Value)
+                    || manager.areas.Any(a => manager.CalculateDirtValue(a) > Mod.ShelterCleaningThreshold.Value)))
+            {
+                Mod.Log($"Sending {member.name} to clean the shelter");
+                var job = new Job_CleanShelter(member.memberRH, mop.GetComponent<ObjectInteraction_CleanShelter>(), (Object_MopAndBucket)mop, mop.transform);
+                member.AddJob(job);
+                mop.beingUsed = true;
+            }
         }
 
         internal static void DoEnvironmentSeeking(Member member)
         {
-            try
+            if (member.isOutside
+                && WeatherManager.instance is not null
+                && WeatherManager.instance.weatherActive
+                && WeatherManager.instance.currentDaysWeather
+                    is WeatherManager.WeatherState.BlackRain
+                    or WeatherManager.WeatherState.SandStorm
+                    or WeatherManager.WeatherState.LightSandStorm
+                    or WeatherManager.WeatherState.HeavySandStorm)
             {
-                if (member.isOutside
-                    && WeatherManager.instance is not null
-                    && WeatherManager.instance.weatherActive
-                    && WeatherManager.instance.currentDaysWeather
-                        is WeatherManager.WeatherState.BlackRain
-                        or WeatherManager.WeatherState.SandStorm
-                        or WeatherManager.WeatherState.LightSandStorm
-                        or WeatherManager.WeatherState.HeavySandStorm)
-                {
-                    Mod.Log($"Sending {member.name} out of the bad weather");
-                    var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(AreaManager.instance.areas[1]));
-                    member.AddJob(job);
-                    return;
-                }
-
-                if (member.currentTemperature is not TemperatureRating.Okay or TemperatureRating.Warm)
-                {
-                    var area = FindAreaOfTemperature(TemperatureRating.Okay).FirstOrDefault()
-                               ?? FindAreaOfTemperature(TemperatureRating.Warm).FirstOrDefault()
-                               ?? FindAreaOfTemperature(TemperatureRating.Cold).FirstOrDefault();
-                    if (area is not null
-                        && area != member.CurrentArea
-                        && area.tempRating != member.CurrentArea.tempRating)
-                    {
-                        Mod.Log($"Sending {member.name} to better temperatures");
-                        var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(area));
-                        member.AddJob(job);
-                    }
-                }
+                Mod.Log($"Sending {member.name} out of the bad weather");
+                var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(AreaManager.instance.areas[1]));
+                member.AddJob(job);
+                return;
             }
-            catch (Exception ex)
+
+            if (member.currentTemperature is not TemperatureRating.Okay or TemperatureRating.Warm)
             {
-                Mod.Log(ex);
+                var area = FindAreaOfTemperature(TemperatureRating.Okay).FirstOrDefault()
+                           ?? FindAreaOfTemperature(TemperatureRating.Warm).FirstOrDefault()
+                           ?? FindAreaOfTemperature(TemperatureRating.Cold).FirstOrDefault()
+                           ?? FindAreaOfTemperature(TemperatureRating.Hot).FirstOrDefault();
+
+                if (area is not null
+                    && member.CurrentArea is not null
+                    && area != member.CurrentArea
+                    && area.tempRating != member.CurrentArea.tempRating)
+                {
+                    Mod.Log($"Sending {member.name} to better temperatures");
+                    var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(area));
+                    member.AddJob(job);
+                }
             }
         }
 
@@ -152,8 +173,15 @@ namespace Automatons
                 return;
             }
 
-            foreach (var planter in PlantersToFarm.Where(p => !p.HasActiveInteractionMembers()))
+            var collection = GetAllPlanters().Where(p =>
+                !p.HasActiveInteractionMembers()
+                && ((Object_Planter)p).GStage is not Object_Planter.GrowingStage.NoSeed
+                && ((Object_Planter)p).CurrentWaterLevel <= 0
+                || ((Object_Planter)p).GStage == Object_Planter.GrowingStage.Harvestable);
+
+            foreach (var obj in collection)
             {
+                var planter = (Object_Planter)obj;
                 if (planter.CurrentWaterLevel > 0)
                 {
                     DoFarmingJob<ObjectInteraction_HarvestPlant>(planter, member);
@@ -209,37 +237,33 @@ namespace Automatons
                 foreach (var burningObject in BurnableObjects)
                 {
                     if (!burningObject.isBurning
-                        || burningObject.isBeingExtinguished)
+                        || burningObject.isBeingExtinguished
+                        || burningObject.obj.beingUsed)
                     {
                         continue;
                     }
 
                     Mod.Log($"{burningObject.name} is burning and not being extinguished");
                     Job job;
-                    var extinguishingSource = GetNearestExtinguisher(burningObject.obj);
+                    var extinguishingSource = ObjectManager.instance.GetNearestObjectsOfType(ObjectManager.ObjectType.FireExtinguisher, member.transform.position)
+                        .FirstOrDefault(o => !o.beingUsed);
                     if (extinguishingSource is not null)
                     {
                         Mod.Log($"Sending {member.name} to {burningObject.name} with extinguisher");
                         extinguishingSource.beingUsed = true;
                         var interaction = burningObject.GetComponent<ObjectInteraction_UseFireExtinguisher>();
                         job = new Job_UseFireExtinguisher(
-                            member.memberRH, interaction, burningObject.obj, extinguishingSource.GetInteractionTransform(0), extinguishingSource);
+                            member.memberRH, interaction, burningObject.obj, extinguishingSource.GetInteractionTransform(0), (Object_FireExtinguisher)extinguishingSource);
                     }
                     else
                     {
                         Mod.Log($"Sending {member.name} to extinguish {burningObject.name}");
                         var interaction = burningObject.GetComponent<ObjectInteraction_ExtinguishFire>();
-                        var butt = ObjectManager.instance.GetNearestObjectOfType(
-                            ObjectManager.ObjectType.SmallWaterButt, burningObject.obj.GetInteractionTransform(0).position);
-                        job = new Job_ExtinguishFire(
-                            member.memberRH, interaction, burningObject.obj, butt.GetInteractionTransform(0), butt);
+                        var source = ObjectManager.instance.GetNearestObjectOfCategory(ObjectManager.ObjectCategory.WaterButt, member.transform.position);
+                        job = new Job_ExtinguishFire(member.memberRH, interaction, burningObject.obj, source.GetInteractionTransform(0), source);
                     }
 
-                    Mod.Log("Cancelling jobs");
-                    member.CancelJobsImmediately();
-                    member.CancelAIJobsImmediately();
                     member.AddJob(job);
-                    //JobUI.instance.UpdateJobIcons();
                     burningObject.isBeingExtinguished = true;
                     break;
                 }
@@ -361,7 +385,7 @@ namespace Automatons
                 }
 
                 var panel = (Object_SolarPanel)obj;
-                if (panel.dustPercent >= Mod.CleaningThreshold.Value)
+                if (panel.dustPercent >= Mod.SolarCleaningThreshold.Value)
                 {
                     Mod.Log($"Sending {member.name} to clean solar panel");
                     var job = new Job(member.memberRH, obj, panel.GetComponent<ObjectInteraction_CleanSolarPanel>(), obj.GetInteractionTransform(0));
@@ -436,28 +460,6 @@ namespace Automatons
                     }
                 }
             }
-        }
-
-        private static Object_FireExtinguisher GetNearestExtinguisher(Object_Base burningObject)
-        {
-            var extinguishers = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.FireExtinguisher);
-            Object_FireExtinguisher nearestExtinguisher = default;
-            var closest = float.MaxValue;
-            var burningTransform = burningObject.GetInteractionTransform(0);
-            foreach (var extinguisher in extinguishers.Where(e =>
-                e.Status is not Object_Base.ObjectStatus.Construction
-                && ((Object_FireExtinguisher)e).CurrentUses > 0
-                && !e.HasActiveInteractionMembers()))
-            {
-                var extinguisherDistanceToFire = extinguisher.transform.position.PathDistanceTo(burningTransform.position);
-                if (extinguisherDistanceToFire < closest)
-                {
-                    closest = extinguisherDistanceToFire;
-                    nearestExtinguisher = extinguisher as Object_FireExtinguisher;
-                }
-            }
-
-            return nearestExtinguisher;
         }
 
         private static bool HasGoodBook(ItemDef.BookType type, Member member)
@@ -563,31 +565,19 @@ namespace Automatons
                        or WeatherManager.WeatherState.LightThunderStorm;
         }
 
-        internal static void MaintainPlantersList(Object_Planter __instance)
+        private static Stopwatch T = new();
+
+        private static List<Object_Base> GetAllPlanters()
         {
-            const float waitTime = 0.25f;
-            var planter = __instance;
-            if (!PlanterTimers.TryGetValue(planter, out _))
-            {
-                PlanterTimers.Add(planter, default);
-            }
-
-            PlanterTimers[planter] += Time.deltaTime;
-            if (PlanterTimers[planter] < waitTime)
-            {
-                return;
-            }
-
-            PlanterTimers[planter] -= waitTime;
-            if (planter.GStage is not Object_Planter.GrowingStage.NoSeed
-                && planter.CurrentWaterLevel <= 0
-                || planter.GStage == Object_Planter.GrowingStage.Harvestable)
-            {
-                PlantersToFarm.Add(planter);
-                return;
-            }
-
-            PlantersToFarm.Remove(planter);
+            T.Restart();
+            List<Object_Base> result = new();
+            result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Planter));
+            result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.EfficientPlanter));
+            result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.HydroponicPlanter));
+            result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.SmallPlanter));
+            result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.SurfacePlanter));
+            Mod.Log(T.ElapsedTicks);
+            return result;
         }
 
         private static void MinMaxLevels(int bookLevel, out int min, out int max)
@@ -627,7 +617,8 @@ namespace Automatons
         internal static bool ReadyToDoJob(Member member)
         {
             if (DisabledAutomatonSurvivors.Contains(member)
-                || member.OutOnExpedition)
+                || member.OutOnExpedition
+                || member.OutOnLoan)
             {
                 return false;
             }

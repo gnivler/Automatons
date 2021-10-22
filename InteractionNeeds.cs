@@ -42,7 +42,8 @@ namespace Automatons
                 or InteractionTypes.InteractionType.ReadCharismaBook
                 or InteractionTypes.InteractionType.ReadIntelligenceBook
                 or InteractionTypes.InteractionType.ReadPerceptionBook
-                or InteractionTypes.InteractionType.ReadStoryBook;
+                or InteractionTypes.InteractionType.ReadStoryBook
+                or InteractionTypes.InteractionType.Cleaning;
         }
     }
 }

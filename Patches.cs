@@ -119,13 +119,6 @@ namespace Automatons
             BurnableObjects.Add(__instance);
         }
 
-        [HarmonyPatch(typeof(Object_Planter), "Update")]
-        [HarmonyPostfix]
-        public static void Object_PlanterUpdatePostfix(Object_Planter __instance)
-        {
-            MaintainPlantersList(__instance);
-        }
-
         [HarmonyPatch(typeof(MemberAI), "Wander")]
         [HarmonyPrefix]
         public static bool MemberAIWanderPrefix(ref bool __runOriginal)

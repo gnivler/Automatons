@@ -17,7 +17,7 @@ namespace Automatons
     {
         private const string PluginGUID = "ca.gnivler.sheltered2.Automatons";
         private const string PluginName = "Automatons";
-        private const string PluginVersion = "1.4.1";
+        private const string PluginVersion = "1.4.2";
         private static string LogFile;
         private static bool dev;
 
@@ -30,12 +30,14 @@ namespace Automatons
         internal static ConfigEntry<bool> Reading;
         internal static ConfigEntry<bool> EnvironmentSeeking;
         internal static ConfigEntry<bool> NeedRepairSkillToRepair;
-        internal static ConfigEntry<int> CleaningThreshold;
+        internal static ConfigEntry<int> SolarCleaningThreshold;
         internal static ConfigEntry<int> RepairThreshold;
         internal static ConfigEntry<int> FatigueThreshold;
         private static ConfigEntry<KeyboardShortcut> ToggleSingle;
         private static ConfigEntry<KeyboardShortcut> ToggleAll;
         private static ConfigEntry<KeyboardShortcut> Clear;
+        internal static ConfigEntry<bool> ShelterCleaning;
+        internal static ConfigEntry<int> ShelterCleaningThreshold;
 
         private void Awake()
         {
@@ -47,10 +49,12 @@ namespace Automatons
             Exercise = Config.Bind("Toggle Jobs", "Exercise", true);
             Reading = Config.Bind("Toggle Jobs", "Reading", true);
             EnvironmentSeeking = Config.Bind("Toggle Jobs", "Avoid idling in bad weather and inclement areas when possible", true);
+            ShelterCleaning = Config.Bind("Toggle Jobs", "Clean the shelter", true);
             NeedRepairSkillToRepair = Config.Bind("Adjustments", "Automatic Repairing skill needed to repair", true);
             FatigueThreshold = Config.Bind("Adjustments", "Fatigue Threshold", 50, new ConfigDescription("Survivors wont exercise or read past this percentage of fatigue", new AcceptableValueRange<int>(0, 75)));
             RepairThreshold = Config.Bind("Adjustments", "Repair Threshold", 25, new ConfigDescription("Survivors wont repair objects until they reach this percentage integrity", new AcceptableValueRange<int>(0, 90)));
-            CleaningThreshold = Config.Bind("Adjustments", "Solar Panel Cleaning Threshold", 25, new ConfigDescription("Survivors wont clean panels until this percentage dusty", new AcceptableValueRange<int>(0, 90)));
+            SolarCleaningThreshold = Config.Bind("Adjustments", "Solar Panel Cleaning Threshold", 25, new ConfigDescription("Survivors wont clean panels until this percentage dusty", new AcceptableValueRange<int>(0, 90)));
+            ShelterCleaningThreshold = Config.Bind("Adjustments", "Shelter Cleaning Threshold", 100, new ConfigDescription("Survivors wont clean until this arbitrary dirtiness measurement", new AcceptableValueRange<int>(10, 1000)));
             ToggleSingle = Config.Bind("Hotkey", "Toggle automation for selected survivor", new KeyboardShortcut(KeyCode.Comma));
             ToggleAll = Config.Bind("Hotkey", "Toggle automation for all survivors", new KeyboardShortcut(KeyCode.Period));
             Clear = Config.Bind("Hotkey", "Emergency clear all object and member actions", new KeyboardShortcut(KeyCode.F8));
@@ -133,13 +137,27 @@ namespace Automatons
                     var everyone = MemberManager.instance.currentMembers.Concat(SlaveManager.instance.m_currentSlaves).Concat(NPCVisitManager.instance.currentVisitors).Concat(NPCVisitManager.instance.deadVisitors);
                     foreach (var member in everyone)
                     {
-                        Helper.ShowFloatie("Everything cleared!", member.baseCharacter);
-                        member.member.m_carriedFood = null;
-                        member.ForcefullyExitAnimationSubStates();
-                        member.StopAllCoroutines();
-                        member.CancelInvoke();
-                        member.member.CancelJobsImmediately();
-                        member.member.CancelAIJobsImmediately();
+                        if (member.member.OutOnExpedition
+                            || member.member.OutOnLoan)
+                        {
+                            continue;
+                        }
+
+                        try
+                        {
+                            Helper.ShowFloatie("Everything cleared!", member.baseCharacter);
+                            member.member.m_carriedFood = null;
+                            member.member.m_corpseScript = null;
+                            member.ForcefullyExitAnimationSubStates();
+                            member.StopAllCoroutines();
+                            member.CancelInvoke();
+                            member.member.CancelJobsImmediately();
+                            member.member.CancelAIJobsImmediately();
+                        }
+                        catch (Exception ex)
+                        {
+                            Log(ex);
+                        }
                     }
                 }
 
@@ -155,7 +173,9 @@ namespace Automatons
             {
                 try
                 {
-                    QuestManager.instance.SpawnFactionQuestWithId("CTKMobStage3");
+                    //QuestManager.instance.m_completedFactionQuests.Do( Log);
+                    //QuestManager.instance.m_currentQuests.Do(q => Log(q.definition.id));
+                    //QuestManager.instance.SpawnFactionQuestWithId("LosMuertosStage1");
                     //QuestManager.instance.m_currentQuests.Where(q => q.IsActive()).Do(q =>
                     //{
                     //    Log($"{q.definition.id}");
@@ -187,10 +207,6 @@ namespace Automatons
 
             if (Input.GetKeyDown(KeyCode.F8))
             {
-                if (MemberManager.instance is not null)
-                {
-                    MemberManager.instance.currentMembers.Do(m => m.member.needs.GetStatsList.Do(s => s.Set(0)));
-                }
             }
         }
 
