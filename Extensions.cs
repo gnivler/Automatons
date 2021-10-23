@@ -1,4 +1,5 @@
 using System.Linq;
+using Unity.Jobs.LowLevel.Unsafe;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -19,16 +20,20 @@ namespace Automatons
             return pathLength;
         }
 
+        internal static bool IsAlreadyRepairing(this Object_Base objectBase)
+        {
+            return objectBase.GetComponent<ObjectInteraction_Repair>().mem != null;
+        }
+
         internal static bool HasActiveInteractionMembers(this Object_Base objectBase)
         {
-            return objectBase.interactions.Any(i => i.InteractionMemberCount != 0);
+            return objectBase.interactions.Any(i => i.interactionMembers.Any());
+            // maybe need to check to see if the object has interactions registered but where the survivor doesn't actually have a job for it
         }
 
         internal static bool HasEmptyQueues(this Member member)
         {
-            return !member.OutOnExpedition
-                   && member.selectable
-                   && member.jobQueueCount + member.aiQueueCount == 0;
+            return member.jobQueueCount + member.aiQueueCount == 0;
         }
     }
 }

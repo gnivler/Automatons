@@ -38,6 +38,7 @@ namespace Automatons
         private static ConfigEntry<KeyboardShortcut> Clear;
         internal static ConfigEntry<bool> ShelterCleaning;
         internal static ConfigEntry<int> ShelterCleaningThreshold;
+        internal static ConfigEntry<bool> RestUp;
 
         private void Awake()
         {
@@ -50,6 +51,7 @@ namespace Automatons
             Reading = Config.Bind("Toggle Jobs", "Reading", true);
             EnvironmentSeeking = Config.Bind("Toggle Jobs", "Avoid idling in bad weather and inclement areas when possible", true);
             ShelterCleaning = Config.Bind("Toggle Jobs", "Clean the shelter", true);
+            RestUp = Config.Bind("Toggle Jobs", "Rest up when nothing else to do", true);
             NeedRepairSkillToRepair = Config.Bind("Adjustments", "Automatic Repairing skill needed to repair", true);
             FatigueThreshold = Config.Bind("Adjustments", "Fatigue Threshold", 50, new ConfigDescription("Survivors wont exercise or read past this percentage of fatigue", new AcceptableValueRange<int>(0, 75)));
             RepairThreshold = Config.Bind("Adjustments", "Repair Threshold", 25, new ConfigDescription("Survivors wont repair objects until they reach this percentage integrity", new AcceptableValueRange<int>(0, 90)));
@@ -75,7 +77,6 @@ namespace Automatons
                 if (Helper.DisabledAutomatonSurvivors.Contains(member.member))
                 {
                     Helper.DisabledAutomatonSurvivors.Remove(member.member);
-                    //Patches.ChooseNextAIActionPostfix(member.memberAI);
                     Helper.ShowFloatie("Automation enabled", member.baseCharacter);
                     return;
                 }
@@ -96,7 +97,6 @@ namespace Automatons
                     Helper.DisabledAutomatonSurvivors.Clear();
                     MemberManager.instance.GetAllShelteredMembers().Select(m => m.memberAI).Do(m =>
                     {
-                        //Patches.ChooseNextAIActionPostfix(m);
                         Helper.ShowFloatie("Automation enabled", m.memberRH.baseCharacter);
                     });
                     return;
@@ -153,6 +153,17 @@ namespace Automatons
                             member.CancelInvoke();
                             member.member.CancelJobsImmediately();
                             member.member.CancelAIJobsImmediately();
+
+                            foreach (var obj in ObjectManager.instance.GetAllObjects())
+                            {
+                                foreach (var interaction in obj.interactions)
+                                {
+                                    interaction.interactionMembers.Clear();
+                                }
+
+                                obj.beingUsed = false;
+                                obj.m_isBeingMoved = false;
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -173,6 +184,36 @@ namespace Automatons
             {
                 try
                 {
+                    Mod.Log("F5");
+                    //var def = QuestManager.instance.GetQuestInstanceFromDefKey("LosMuertosStage1");
+                    //QuestManager.instance.FinishQuest(def.id, true);
+                    //def = QuestManager.instance.GetQuestInstanceFromDefKey("LosMuertosStage2");
+                    //QuestManager.instance.FinishQuest(def.id, true);
+                    //Mod.Log(def);
+                    //def.BecomeLikeNew();
+                    //QuestManager.instance.SpawnQuestOrScenario(def.definition);
+                    //QuestManager.instance.GetCurrentQuests(true, true, true).Do(q => Log(q.definition.id));
+                    //QuestManager.instance.m_currentQuests.Remove(def);
+                  
+                    //QuestManager.instance.SpawnFactionQuestWithId("LosMuertosStage2");
+                    //QuestManager.instance.GetCurrentQuests(true, true, true).Do(q => Log(q.definition.id));
+                    //var remove = MapManager.instance.AllQuestPointsOfInterest.First(p => p.Encounter == EncounterManager.EncounterType.Quest
+                    //&& p.NameKey.Contains("Los Muertos"));
+                    //Log(remove);
+                    //MapManager.instance.AllPointsOfInterest.Remove(remove);
+
+                    //QuestManager.instance.SpawnFactionQuestWithId("LosMuertosStage3");
+                    //def = QuestManager.instance.GetQuestInstanceFromDefKey("LosMuertosStage3");
+                    //QuestManager.instance.SpawnQuestInstances_Recursive(def.definition, def.parent, 5, out _);
+                    //QuestManager.instance.FinishQuest(def.id, true);
+                    //QuestManager.instance.SpawnFactionQuestWithId("LosMuertosStage4");
+                    //QuestManager.instance.SpawnQuestOrScenario(def);
+                    //def.m_daysUntilCompletion = 0.1f;
+                    //QuestManager.instance.SpawnFactionQuestWithId("LosMuertosStage2");
+                    //QuestManager.instance.SpawnQuestOrScenario(def.definition);
+                    //def.FinishQuest(true);
+                    // QuestManager.instance.AddRemoveQuestInstances_Recursive(def, true);
+                    //QuestManager.instance.m_currentQuests.First(x => x.definition.id == "LosMuertosStage2")
                     //QuestManager.instance.m_completedFactionQuests.Do( Log);
                     //QuestManager.instance.m_currentQuests.Do(q => Log(q.definition.id));
                     //QuestManager.instance.SpawnFactionQuestWithId("LosMuertosStage1");
@@ -190,13 +231,8 @@ namespace Automatons
 
             if (Input.GetKeyDown(KeyCode.F6))
             {
-                ObjectManager.instance.GetAllObjects().Do(b =>
-                {
-                    MemberManager.instance.GetAllShelteredMembers().Do(m => Helper.ShowFloatie("All object interactions cleared", m.baseCharacter));
-                    b.interactions.Do(i => Traverse.Create(i).Field<List<Member>>("interactionMembers").Value.Clear());
-                    b.beingUsed = false;
-                    b.interactions.Do(i => i.CancelAllJobs());
-                });
+                MemberManager.instance.GetAllShelteredMembers().Do(m => m.member.m_loyalty = Member.LoyaltyEnum.Loyal);
+
             }
 
             if (Input.GetKeyDown(KeyCode.F7))
@@ -207,6 +243,7 @@ namespace Automatons
 
             if (Input.GetKeyDown(KeyCode.F8))
             {
+              
             }
         }
 
@@ -215,8 +252,7 @@ namespace Automatons
         {
             if (dev)
             {
-                FileLog.Log($"[Automatons] {input}");
-                //File.AppendAllText(LogFile, $"{input ?? "null"}\n");
+                File.AppendAllText(LogFile, $"{input ?? "null"}\n");
             }
         }
     }
