@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Management.Instrumentation;
 using HarmonyLib;
 using UnityEngine;
 using static Automatons.Helper;
@@ -12,6 +13,7 @@ namespace Automatons
     public static class Patches
     {
         internal static bool Cheat;
+        private static bool initialized;
 
         // cheat
         [HarmonyPatch(typeof(CraftingPanel), "OnRecipeSlotPress")]
@@ -25,32 +27,6 @@ namespace Automatons
                     ShelterInventoryManager.instance.inventory.AddItems(stack);
                 }
             }
-        }
-
-        // bugfix
-        [HarmonyPatch(typeof(ObjectInteraction_Base), "RegisterForInteraction")]
-        [HarmonyPrefix]
-        public static bool ObjectInteraction_BaseRegisterForInteractionPrefix(ObjectInteraction_Base __instance,
-            ref List<Member> ___interactionMembers,
-            ref Dictionary<int, float> ___interactionTimers,
-            MemberReferenceHolder memberRH,
-            ref bool __runOriginal,
-            ref bool __result)
-        {
-            if (__instance.IsInteractionAvailable(memberRH, true))
-            {
-                ___interactionMembers.Add(memberRH.member);
-                if (!___interactionTimers.ContainsKey(memberRH.member.GetID))
-                {
-                    ___interactionTimers.Add(memberRH.member.GetID, 0f);
-                }
-
-                __instance.obj.beingUsed = true;
-                __result = true;
-            }
-
-            __runOriginal = false;
-            return false;
         }
 
         [HarmonyPatch(typeof(ObjectInteraction_HarvestTrap), "Awake")]
@@ -139,7 +115,16 @@ namespace Automatons
         [HarmonyPostfix]
         public static void MemberUpdatePostfix(Member __instance)
         {
-            if (!ReadyToDoJob(__instance))
+            if (!initialized
+                && MemberManager.instance.GetAllShelteredMembers().All(m => m.name != "Sam Smith"))
+            {
+                initialized = true;
+            }
+
+            if (!initialized
+                || DisabledAutomatonSurvivors.Contains(__instance)
+                || __instance.OutOnExpedition
+                || __instance.OutOnLoan)
             {
                 return;
             }
@@ -153,5 +138,10 @@ namespace Automatons
         {
             ClearGlobals();
         }
+
+        [HarmonyPatch(typeof(SlaveAI), "Wander")]
+        [HarmonyPrefix]
+        public static bool SlaveAIWanderPrefix() => false;
     }
 }
+

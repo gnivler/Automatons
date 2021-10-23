@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -19,6 +18,7 @@ namespace Automatons
         private static readonly Dictionary<Member, float> MemberTimers = new();
         internal static readonly HashSet<ObjectInteraction_HarvestTrap> Traps = new();
         private const int WaitDuration = 3;
+        private static float FireCheckTimer;
 
         private static readonly AccessTools.FieldRef<MemberAI, MemberAI.AiState> lastState =
             AccessTools.FieldRefAccess<MemberAI, MemberAI.AiState>("lastState");
@@ -72,6 +72,11 @@ namespace Automatons
                 {
                     yield return AccessTools.Method(typeof(Helper), nameof(DoEnvironmentSeeking));
                 }
+
+                if (Mod.RestUp.Value)
+                {
+                    yield return AccessTools.Method(typeof(Helper), nameof(DoRest));
+                }
             }
         }
 
@@ -80,28 +85,6 @@ namespace Automatons
             DisabledAutomatonSurvivors.Clear();
             BurnableObjects.Clear();
             Traps.Clear();
-        }
-
-        internal static void DoShelterCleaning(Member member)
-        {
-            if (!member.HasEmptyQueues()
-                || member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
-            {
-                return;
-            }
-
-            var manager = AreaManager.instance;
-            var mop = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Mop).FirstOrDefault(m => !m.beingUsed);
-            if (mop is not null
-                && (manager.CalculateDirtValue(mop.currentArea) > Mod.ShelterCleaningThreshold.Value
-                    || mop.currentArea.surroundingAreas.Any(a => manager.CalculateDirtValue(a) > Mod.ShelterCleaningThreshold.Value)
-                    || manager.areas.Any(a => manager.CalculateDirtValue(a) > Mod.ShelterCleaningThreshold.Value)))
-            {
-                Mod.Log($"Sending {member.name} to clean the shelter");
-                var job = new Job_CleanShelter(member.memberRH, mop.GetComponent<ObjectInteraction_CleanShelter>(), (Object_MopAndBucket)mop, mop.transform);
-                member.AddJob(job);
-                mop.beingUsed = true;
-            }
         }
 
         internal static void DoEnvironmentSeeking(Member member)
@@ -121,12 +104,13 @@ namespace Automatons
                 return;
             }
 
-            if (member.currentTemperature is not TemperatureRating.Okay or TemperatureRating.Warm)
+            if (member.HasEmptyQueues()
+                && member.currentjob is null
+                && member.currentTemperature is not TemperatureRating.Okay or TemperatureRating.Warm)
             {
                 var area = FindAreaOfTemperature(TemperatureRating.Okay).FirstOrDefault()
                            ?? FindAreaOfTemperature(TemperatureRating.Warm).FirstOrDefault()
-                           ?? FindAreaOfTemperature(TemperatureRating.Cold).FirstOrDefault()
-                           ?? FindAreaOfTemperature(TemperatureRating.Hot).FirstOrDefault();
+                           ?? FindAreaOfTemperature(TemperatureRating.Cold).FirstOrDefault();
 
                 if (area is not null
                     && member.CurrentArea is not null
@@ -168,20 +152,22 @@ namespace Automatons
 
         internal static void DoFarming(Member member)
         {
-            if (!member.HasEmptyQueues())
+            if (!member.HasEmptyQueues()
+                || member.currentjob is not null)
             {
                 return;
             }
 
-            var collection = GetAllPlanters().Where(p =>
+            var collection = GetAllPlanters().Cast<Object_Planter>().Where(p =>
                 !p.HasActiveInteractionMembers()
-                && ((Object_Planter)p).GStage is not Object_Planter.GrowingStage.NoSeed
-                && ((Object_Planter)p).CurrentWaterLevel <= 0
-                || ((Object_Planter)p).GStage == Object_Planter.GrowingStage.Harvestable);
+                && !p.beingUsed
+                && p.GStage is not Object_Planter.GrowingStage.NoSeed
+                && (p.CurrentWaterLevel <= 0
+                    || p.GStage == Object_Planter.GrowingStage.Harvestable));
 
             foreach (var obj in collection)
             {
-                var planter = (Object_Planter)obj;
+                var planter = obj;
                 if (planter.CurrentWaterLevel > 0)
                 {
                     DoFarmingJob<ObjectInteraction_HarvestPlant>(planter, member);
@@ -216,6 +202,7 @@ namespace Automatons
             var interaction = planter.GetComponent<T>();
             var job = new Job(member.memberRH, planter, interaction, planter.GetInteractionTransform(0));
             member.AddJob(job);
+            planter.beingUsed = true;
         }
 
         private static void DoFirefighting(Member member)
@@ -302,12 +289,18 @@ namespace Automatons
         internal static void DoReading(Member member)
         {
             if (!member.HasEmptyQueues()
-                || member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
+                || member.currentjob is not null)
             {
                 return;
             }
 
-            var bookCases = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Bookshelf);
+            if (member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
+            {
+                return;
+            }
+
+            var bookCases = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Bookshelf)
+                .Where(o => o.Status is not Object_Base.ObjectStatus.Construction or Object_Base.ObjectStatus.Deconstruction);
             foreach (var bookCase in bookCases.Where(b => !b.HasActiveInteractionMembers()))
             {
                 ObjectInteraction_Base objectInteractionBase = default;
@@ -372,6 +365,68 @@ namespace Automatons
             }
         }
 
+        internal static void DoRest(Member member)
+        {
+            if (!member.HasEmptyQueues()
+                || member.currentjob is not null
+                || member.memberRH.memberAI.lastState == MemberAI.AiState.Rest)
+            {
+                return;
+            }
+
+            var bed = ObjectManager.instance.GetNearestObjectsOfCategory(ObjectManager.ObjectCategory.Bed, member.transform.position).FirstOrDefault(b => !b.beingUsed);
+            if (bed is not null)
+            {
+                Job job = default;
+                if (member.needs.fatigue.value > 20)
+                {
+                    job = new Job(member.memberRH, bed, bed.GetComponent<ObjectInteraction_Sleep>(), bed.transform);
+                }
+                else if (member.healthNormalised * 100 < 100)
+                {
+                    job = new Job(member.memberRH, bed, bed.GetComponent<ObjectInteraction_Rest>(), bed.transform);
+                    lastState(member.memberRH.memberAI) = MemberAI.AiState.Rest;
+                }
+
+                if (job is not null)
+                {
+                    Mod.Log($"Sending {member.name} to rest up to zero fatigue");
+                    // TODO damn dictionary to avoid spamming it
+                    member.AddJob(job);
+                    bed.beingUsed = true;
+                }
+            }
+        }
+
+        internal static void DoShelterCleaning(Member member)
+        {
+            if (EffectsManager.instance is null
+                || !member.HasEmptyQueues()
+                || member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
+            {
+                return;
+            }
+
+            var manager = AreaManager.instance;
+            try
+            {
+                var mop = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Mop).FirstOrDefault(m => !m.beingUsed);
+                var dirt = manager.areas.Sum(a => manager.CalculateDirtValue(a));
+                if (mop is not null
+                    && dirt > Mod.ShelterCleaningThreshold.Value)
+                {
+                    Mod.Log($"Sending {member.name} to clean the shelter");
+                    var job = new Job_CleanShelter(member.memberRH, mop.GetComponent<ObjectInteraction_CleanShelter>(), (Object_MopAndBucket)mop, mop.transform);
+                    member.AddJob(job);
+                    mop.beingUsed = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Mod.Log(ex);
+            }
+        }
+
         private static void DoSolarPanelCleaning(Member member)
         {
             var panels = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.SolarPanel);
@@ -416,8 +471,14 @@ namespace Automatons
                 return;
             }
 
-            var burning = BurnableObjects.Where(b =>
-                b.isBurning && !b.isBurntOut && !b.isBeingExtinguished).ToList();
+            List<BurnableObject> burning = new();
+            FireCheckTimer += Time.deltaTime;
+            if (FireCheckTimer > 1)
+            {
+                burning = BurnableObjects.Where(b => b.isBurning && !b.isBurntOut && !b.isBeingExtinguished).ToList();
+            }
+
+            FireCheckTimer--;
             if (BreachManager.instance.inProgress
                 && !burning.All(b => b.obj.IsSurfaceObject)
                 || !BreachManager.instance.inProgress
@@ -435,6 +496,12 @@ namespace Automatons
                 return;
             }
 
+            if (WaitingOnTimer(member))
+            {
+                return;
+            }
+
+            //Mod.Log($"{member.firstName} tick");
             foreach (var methodInfo in ExtraJobs)
             {
                 if (member.HasEmptyQueues()
@@ -452,6 +519,7 @@ namespace Automatons
                 if (member.HasEmptyQueues()
                     && member.currentjob is null)
                 {
+                    //Mod.Log($"{member.name} {methodInfo.Name}");
                     methodInfo.Invoke(null, new object[] { member });
                     if (!member.HasEmptyQueues()
                         || member.currentjob is not null)
@@ -565,7 +633,7 @@ namespace Automatons
                        or WeatherManager.WeatherState.LightThunderStorm;
         }
 
-        private static List<Object_Base> GetAllPlanters()
+        private static IEnumerable<Object_Base> GetAllPlanters()
         {
             List<Object_Base> result = new();
             result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Planter));
@@ -573,6 +641,10 @@ namespace Automatons
             result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.HydroponicPlanter));
             result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.SmallPlanter));
             result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.SurfacePlanter));
+            result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Greenhouse));
+            result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.GreenhouseCamo));
+            result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.HugeGreenhouse));
+            result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.LargeGreenhouse));
             return result;
         }
 
@@ -610,15 +682,8 @@ namespace Automatons
             }
         }
 
-        internal static bool ReadyToDoJob(Member member)
+        private static bool WaitingOnTimer(Member member)
         {
-            if (DisabledAutomatonSurvivors.Contains(member)
-                || member.OutOnExpedition
-                || member.OutOnLoan)
-            {
-                return false;
-            }
-
             if (!MemberTimers.ContainsKey(member))
             {
                 MemberTimers.Add(member, default);
@@ -628,11 +693,11 @@ namespace Automatons
             var variance = Random.Range(0, 2f);
             if (MemberTimers[member] < WaitDuration + variance)
             {
-                return false;
+                return true;
             }
 
             MemberTimers[member] -= WaitDuration + variance;
-            return true;
+            return false;
         }
 
         private static Vector3 ReturnAdjustedAreaPosition(Area area)
