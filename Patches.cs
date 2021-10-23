@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Management.Instrumentation;
 using HarmonyLib;
@@ -29,6 +30,24 @@ namespace Automatons
             }
         }
 
+        // bugfix
+        [HarmonyPatch(typeof(ObjectInteraction_Base), "RegisterForInteraction")]
+        [HarmonyPrefix]
+        public static bool ObjectInteraction_BaseRegisterForInteractionPrefix(
+            Dictionary<int, float> ___interactionTimers,
+            MemberReferenceHolder memberRH,
+            ref bool __runOriginal)
+        {
+            if (___interactionTimers.ContainsKey(memberRH.member.GetID))
+            {
+                __runOriginal = false;
+                return false;
+            }
+
+            __runOriginal = true;
+            return true;
+        }
+
         [HarmonyPatch(typeof(ObjectInteraction_HarvestTrap), "Awake")]
         [HarmonyPostfix]
         public static void ObjectInteraction_HarvestTrapAwakePostfix(ObjectInteraction_HarvestTrap __instance)
@@ -51,7 +70,7 @@ namespace Automatons
         {
             __runOriginal = false;
             var objectsOfType = ___objects[type];
-            objectsOfType.Sort((left, right) => CompareFloats(left.transform.position.PathDistanceTo(pos), right.transform.position.PathDistanceTo(pos)));
+            objectsOfType.Sort((left, right) => CompareFloats(left.GetInteractionTransform(0).position.PathDistanceTo(pos), right.GetInteractionTransform(0).position.PathDistanceTo(pos)));
             __result = objectsOfType;
             return false;
 
@@ -142,6 +161,15 @@ namespace Automatons
         [HarmonyPatch(typeof(SlaveAI), "Wander")]
         [HarmonyPrefix]
         public static bool SlaveAIWanderPrefix() => false;
-    }
-}
 
+        [HarmonyPatch(typeof(MemberManager), "IsTheLeaderDead")]
+        [HarmonyPrefix]
+        public static bool fuckery(ref bool __runOriginal, ref bool __result)
+        {
+            __result = false;
+            __runOriginal = false;
+            return false;
+        }
+    }
+    
+}

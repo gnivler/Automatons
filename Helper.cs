@@ -98,7 +98,7 @@ namespace Automatons
                     or WeatherManager.WeatherState.LightSandStorm
                     or WeatherManager.WeatherState.HeavySandStorm)
             {
-                Mod.Log($"Sending {member.name} out of the bad weather");
+                Mod.Log($"Sending {member.name} out of the bad weather at {AreaManager.instance.areas[1].name} position {ReturnAdjustedAreaPosition(AreaManager.instance.areas[1])}");
                 var job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(AreaManager.instance.areas[1]));
                 member.AddJob(job);
                 return;
@@ -117,17 +117,9 @@ namespace Automatons
                     && area != member.CurrentArea
                     && area.tempRating != member.CurrentArea.tempRating)
                 {
-                    Mod.Log($"Sending {member.name} to better temperatures");
-                    Job job;
-                    if (area.isSurfaceArea)
-                    {
-                        job = new Job_GoHere(member.memberRH, area.transform.position);
-                    }
-                    else
-                    {
-                        job = new Job_GoHere(member.memberRH, ReturnAdjustedAreaPosition(area));
-                    }
-
+                    var position = ReturnAdjustedAreaPosition(area);
+                    Mod.Log($"Sending {member.name} to better temperatures at {area.name} position {position}");
+                    var job = new Job_GoHere(member.memberRH, position);
                     member.AddJob(job);
                 }
             }
@@ -162,7 +154,8 @@ namespace Automatons
         internal static void DoFarming(Member member)
         {
             if (!member.HasEmptyQueues()
-                || member.currentjob is not null)
+                || member.currentjob is not null
+                || IsBadWeather())
             {
                 return;
             }
@@ -520,8 +513,7 @@ namespace Automatons
                     member.memberRH.memberAI.FindNeedsJob();
                     if (!member.HasEmptyQueues())
                     {
-                        Mod.Log($"{member.name} found needs job {member.currentjob?.jobInteractionType}");
-                        break;
+                        Mod.Log($"{member.name} found needs job {member.aiQueue[0]?.jobInteractionType}");
                     }
                 }
 
@@ -711,12 +703,22 @@ namespace Automatons
 
         private static Vector3 ReturnAdjustedAreaPosition(Area area)
         {
-            var width = area.areaCollider.bounds.extents.x;
-            var position = area.transform.position;
-            NavMesh.SamplePosition(position, out var hit, 50f, -1);
-            hit.position += new Vector3(Random.Range(-width, width), 0, 0);
+            var areaTransform = area.transform.position;
+            var size = area.areaCollider.size;
+            var yPoint = size.normalized.y * 100;
+            float height;
+            if (area.isSurfaceArea)
+            {
+                height = yPoint;
+            }
+            else
+            {
+                height = area.transform.position.y;
+            }
+
+            var position = new Vector3(Random.Range(0, area.areaCollider.size.x), height, areaTransform.z);
+            NavMesh.SamplePosition(position, out var hit, 5f, -1);
             return hit.position;
-            // :O
         }
 
         internal static void ShowFloatie(string message, BaseCharacter baseCharacter)

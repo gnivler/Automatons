@@ -30,8 +30,8 @@ namespace Automatons
                 AccessTools.Method(typeof(MemberAI), "EvaluateNeeds").Invoke(Member.memberRH.memberAI, new object[] { });
                 if (currentPriorityNeed(Member.memberRH.memberAI) != NeedsStat.NeedsStatType.Max)
                 {
-                    Member.currentjob.CancelJob();
-                    Mod.Log($"{Member.name} found needs job during interaction {Member.currentjob.targetTransform.name}");
+                    Mod.Log($"{Member.name} found needs job during interaction {Member.currentjob?.jobInteractionType}");
+                    Member.currentjob?.CancelJob();
                     Member.memberRH.memberAI.FindNeedsJob();
                 }
             }
