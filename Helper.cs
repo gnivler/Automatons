@@ -106,7 +106,7 @@ namespace Automatons
 
             if (member.HasEmptyQueues()
                 && member.currentjob is null
-                && member.currentTemperature is not TemperatureRating.Okay or TemperatureRating.Warm)
+                && member.currentTemperature is not TemperatureRating.Okay)
             {
                 var area = FindAreaOfTemperature(TemperatureRating.Okay).FirstOrDefault()
                            ?? FindAreaOfTemperature(TemperatureRating.Warm).FirstOrDefault()
@@ -204,7 +204,7 @@ namespace Automatons
             var interaction = planter.GetComponent<T>();
             var job = new Job(member.memberRH, planter, interaction, planter.GetInteractionTransform(0));
             member.AddJob(job);
-            planter.beingUsed = true;
+            //planter.beingUsed = true;
         }
 
         private static void DoFirefighting(Member member)
@@ -239,7 +239,7 @@ namespace Automatons
                     if (extinguishingSource is not null)
                     {
                         Mod.Log($"Sending {member.name} to {burningObject.name} with extinguisher");
-                        extinguishingSource.beingUsed = true;
+                        //extinguishingSource.beingUsed = true;
                         var interaction = burningObject.GetComponent<ObjectInteraction_UseFireExtinguisher>();
                         job = new Job_UseFireExtinguisher(
                             member.memberRH, interaction, burningObject.obj, extinguishingSource.GetInteractionTransform(0), (Object_FireExtinguisher)extinguishingSource);
@@ -361,7 +361,7 @@ namespace Automatons
                     var inter = damagedObject.GetComponent<ObjectInteraction_Repair>();
                     var job = new Job(member.memberRH, damagedObject, inter, damagedObject.GetInteractionTransform(0));
                     member.AddJob(job);
-                    damagedObject.beingUsed = true;
+                    //damagedObject.beingUsed = true;
                     break;
                 }
             }
@@ -376,26 +376,24 @@ namespace Automatons
                 return;
             }
 
-            var bed = ObjectManager.instance.GetNearestObjectsOfCategory(ObjectManager.ObjectCategory.Bed, member.transform.position).FirstOrDefault(b => !b.beingUsed);
+            var bed = ObjectManager.instance.GetNearestObjectsOfCategory(ObjectManager.ObjectCategory.Bed, member.transform.position).FirstOrDefault(b => !b.beingUsed && !b.IsWithinHoldingCell);
             if (bed is not null)
             {
                 Job job = default;
                 if (member.needs.fatigue.value > 20)
                 {
-                    job = new Job(member.memberRH, bed, bed.GetComponent<ObjectInteraction_Sleep>(), bed.transform);
+                    job = new Job(member.memberRH, bed, bed.GetComponent<ObjectInteraction_Sleep>(), bed.GetInteractionTransform(0));
                 }
                 else if (member.healthNormalised * 100 < 100)
                 {
-                    job = new Job(member.memberRH, bed, bed.GetComponent<ObjectInteraction_Rest>(), bed.transform);
+                    job = new Job(member.memberRH, bed, bed.GetComponent<ObjectInteraction_Rest>(), bed.GetInteractionTransform(0));
                     lastState(member.memberRH.memberAI) = MemberAI.AiState.Rest;
                 }
 
                 if (job is not null)
                 {
-                    Mod.Log($"Sending {member.name} to rest up to zero fatigue");
-                    // TODO damn dictionary to avoid spamming it
+                    Mod.Log($"Sending {member.name} to rest up");
                     member.AddJob(job);
-                    bed.beingUsed = true;
                 }
             }
         }
@@ -420,7 +418,7 @@ namespace Automatons
                     Mod.Log($"Sending {member.name} to clean the shelter");
                     var job = new Job_CleanShelter(member.memberRH, mop.GetComponent<ObjectInteraction_CleanShelter>(), (Object_MopAndBucket)mop, mop.transform);
                     member.AddJob(job);
-                    mop.beingUsed = true;
+                    //mop.beingUsed = true;
                 }
             }
             catch (Exception ex)
@@ -447,7 +445,7 @@ namespace Automatons
                     Mod.Log($"Sending {member.name} to clean solar panel");
                     var job = new Job(member.memberRH, obj, panel.GetComponent<ObjectInteraction_CleanSolarPanel>(), obj.GetInteractionTransform(0));
                     member.AddJob(job);
-                    panel.beingUsed = true;
+                    //panel.beingUsed = true;
                 }
             }
         }
@@ -493,7 +491,8 @@ namespace Automatons
                 return;
             }
 
-            if (member.currentjob is not null)
+            if (BreachManager.instance.inProgress
+                || member.currentjob is not null)
             {
                 return;
             }
@@ -511,9 +510,11 @@ namespace Automatons
                 {
                     AccessTools.Method(typeof(MemberAI), "EvaluateNeeds").Invoke(member.memberRH.memberAI, new object[] { });
                     member.memberRH.memberAI.FindNeedsJob();
-                    if (!member.HasEmptyQueues())
+                    if (!member.HasEmptyQueues()
+                        || member.currentjob is not null)
                     {
                         Mod.Log($"{member.name} found needs job {member.aiQueue[0]?.jobInteractionType}");
+                        return;
                     }
                 }
 
@@ -525,7 +526,8 @@ namespace Automatons
                     if (!member.HasEmptyQueues()
                         || member.currentjob is not null)
                     {
-                        break;
+                        Mod.Log($"{member.name} found job {member.jobQueue[0]?.jobInteractionType}");
+                        return;
                     }
                 }
             }
@@ -705,18 +707,22 @@ namespace Automatons
         {
             var areaTransform = area.transform.position;
             var size = area.areaCollider.size;
-            var yPoint = size.normalized.y * 100;
-            float height;
+            float x, y;
             if (area.isSurfaceArea)
             {
-                height = yPoint;
+                x = size.normalized.x * 100;
+                x = Random.Range(x / 2, x);
+                y = size.normalized.y * 100;
             }
             else
             {
-                height = area.transform.position.y;
+                x = Random.Range(areaTransform.x / 2, areaTransform.x);
+                y = area.transform.position.y;
             }
 
-            var position = new Vector3(Random.Range(0, area.areaCollider.size.x), height, areaTransform.z);
+            //Mod.Log($"areaTransform.x {areaTransform.x}");
+            //Mod.Log($"x {x} y {y}");
+            var position = new Vector3(x, y, areaTransform.z);
             NavMesh.SamplePosition(position, out var hit, 5f, -1);
             return hit.position;
         }

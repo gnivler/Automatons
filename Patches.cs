@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Linq;
 using System.Management.Instrumentation;
@@ -34,12 +36,16 @@ namespace Automatons
         [HarmonyPatch(typeof(ObjectInteraction_Base), "RegisterForInteraction")]
         [HarmonyPrefix]
         public static bool ObjectInteraction_BaseRegisterForInteractionPrefix(
+            ObjectInteraction_Base __instance,
             Dictionary<int, float> ___interactionTimers,
             MemberReferenceHolder memberRH,
-            ref bool __runOriginal)
+            ref bool __runOriginal,
+            ref bool __result)
         {
             if (___interactionTimers.ContainsKey(memberRH.member.GetID))
             {
+                __instance.obj.beingUsed = true;
+                __result = true;
                 __runOriginal = false;
                 return false;
             }
@@ -162,14 +168,20 @@ namespace Automatons
         [HarmonyPrefix]
         public static bool SlaveAIWanderPrefix() => false;
 
+        // bugfix
         [HarmonyPatch(typeof(MemberManager), "IsTheLeaderDead")]
         [HarmonyPrefix]
         public static bool fuckery(ref bool __runOriginal, ref bool __result)
         {
-            __result = false;
             __runOriginal = false;
+            Mod.Log(new string('*', 50));
+            Mod.Log(new StackTrace());
+            var leader = MemberManager.instance.GetMemberByID(MemberManager.instance.LeaderId);
+            __result = leader.isDead
+                       || leader.IsUnconscious
+                       && MemberManager.instance.GetAllShelteredMembers().All(m => m.member.isDead || m.member.IsUnconscious);
+
             return false;
         }
     }
-    
 }

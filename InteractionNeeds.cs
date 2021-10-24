@@ -31,7 +31,8 @@ namespace Automatons
                 if (currentPriorityNeed(Member.memberRH.memberAI) != NeedsStat.NeedsStatType.Max)
                 {
                     Mod.Log($"{Member.name} found needs job during interaction {Member.currentjob?.jobInteractionType}");
-                    Member.currentjob?.CancelJob();
+                    Member.CancelJobsImmediately();
+                    Member.CancelAIJobsImmediately();
                     Member.memberRH.memberAI.FindNeedsJob();
                 }
             }

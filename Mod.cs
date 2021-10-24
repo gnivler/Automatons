@@ -231,6 +231,7 @@ namespace Automatons
 
             if (Input.GetKeyDown(KeyCode.F6))
             {
+                MemberManager.instance.GetAllShelteredMembers().Do(m => m.member.needs.loyalty.m_value = 100);
                 MemberManager.instance.GetAllShelteredMembers().Do(m => m.member.m_loyalty = Member.LoyaltyEnum.Loyal);
 
             }
