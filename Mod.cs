@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -7,6 +8,8 @@ using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
+using UnityEngine.AI;
+using Random = UnityEngine.Random;
 
 // ReSharper disable InconsistentNaming
 
@@ -17,7 +20,7 @@ namespace Automatons
     {
         private const string PluginGUID = "ca.gnivler.sheltered2.Automatons";
         private const string PluginName = "Automatons";
-        private const string PluginVersion = "1.4.2";
+        private const string PluginVersion = "1.4.3";
         private static string LogFile;
         private static bool dev;
 
@@ -145,14 +148,27 @@ namespace Automatons
 
                         try
                         {
-                            Helper.ShowFloatie("Everything cleared!", member.baseCharacter);
+                            Helper.ClearGlobals();
+                            BreachManager.instance.ResetSpawnTime();
+                            member.member.Heal(500);
                             member.member.m_carriedFood = null;
+                            member.member.m_carriedWater = 0;
                             member.member.m_corpseScript = null;
+                            var corpse = member.GetComponent<Obj_Corpse>();
+                            if (corpse is not null)
+                            {
+                                corpse.RemoveFromArea();
+                            }
+
                             member.ForcefullyExitAnimationSubStates();
-                            member.StopAllCoroutines();
-                            member.CancelInvoke();
                             member.member.CancelJobsImmediately();
                             member.member.CancelAIJobsImmediately();
+                            member.member.OutOnExpedition = false;
+                            member.member.InBreachParty = false;
+                            member.member.OutOnLoan = false;
+                            member.member.m_isUnconscious = false;
+                            NavMesh.SamplePosition(AreaManager.instance.m_surfaceArea.areaCollider.transform.position, out var hit, 50f, -1);
+                            member.member.transform.position = hit.position;
 
                             foreach (var obj in ObjectManager.instance.GetAllObjects())
                             {
@@ -164,6 +180,20 @@ namespace Automatons
                                 obj.beingUsed = false;
                                 obj.m_isBeingMoved = false;
                             }
+
+                            //foreach (var breacher in NPCVisitManager.instance.m_validBreachersForCombat)
+                            //{
+                            //    breacher.Damage(500);
+                            //}
+                            //
+                            //for (var i = 0; i < ExplorationManager.Instance.Parties.Count; i++)
+                            //{
+                            //    var p = ExplorationManager.Instance.Parties[i];
+                            //    p.m_stateStack.Do(s => s.state = Party.PartyState.ReturningToShelter);
+                            //}
+
+
+                            Helper.ShowFloatie("Everything cleared!", member.baseCharacter);
                         }
                         catch (Exception ex)
                         {
@@ -194,7 +224,7 @@ namespace Automatons
                     //QuestManager.instance.SpawnQuestOrScenario(def.definition);
                     //QuestManager.instance.GetCurrentQuests(true, true, true).Do(q => Log(q.definition.id));
                     //QuestManager.instance.m_currentQuests.Remove(def);
-                  
+
                     //QuestManager.instance.SpawnFactionQuestWithId("LosMuertosStage2");
                     //QuestManager.instance.GetCurrentQuests(true, true, true).Do(q => Log(q.definition.id));
                     //var remove = MapManager.instance.AllQuestPointsOfInterest.First(p => p.Encounter == EncounterManager.EncounterType.Quest
@@ -233,7 +263,6 @@ namespace Automatons
             {
                 MemberManager.instance.GetAllShelteredMembers().Do(m => m.member.needs.loyalty.m_value = 100);
                 MemberManager.instance.GetAllShelteredMembers().Do(m => m.member.m_loyalty = Member.LoyaltyEnum.Loyal);
-
             }
 
             if (Input.GetKeyDown(KeyCode.F7))
@@ -244,7 +273,6 @@ namespace Automatons
 
             if (Input.GetKeyDown(KeyCode.F8))
             {
-              
             }
         }
 

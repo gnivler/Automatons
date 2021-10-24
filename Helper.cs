@@ -470,15 +470,15 @@ namespace Automatons
             {
                 return;
             }
-
+            
             List<BurnableObject> burning = new();
             FireCheckTimer += Time.deltaTime;
             if (FireCheckTimer > 1)
             {
+                FireCheckTimer--;
                 burning = BurnableObjects.Where(b => b.isBurning && !b.isBurntOut && !b.isBeingExtinguished).ToList();
             }
 
-            FireCheckTimer--;
             if (BreachManager.instance.inProgress
                 && !burning.All(b => b.obj.IsSurfaceObject)
                 || !BreachManager.instance.inProgress

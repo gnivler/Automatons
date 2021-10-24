@@ -171,15 +171,16 @@ namespace Automatons
         // bugfix
         [HarmonyPatch(typeof(MemberManager), "IsTheLeaderDead")]
         [HarmonyPrefix]
-        public static bool fuckery(ref bool __runOriginal, ref bool __result)
+        public static bool MemberManagerIsTheLeaderDeadPrefix(ref bool __runOriginal, ref bool __result)
         {
             __runOriginal = false;
-            Mod.Log(new string('*', 50));
-            Mod.Log(new StackTrace());
             var leader = MemberManager.instance.GetMemberByID(MemberManager.instance.LeaderId);
+            var leaderParty = ExplorationManager.Instance.Parties.FirstOrDefault(p => p.m_partyMembers.Any(m => m.memberRH.member == MemberManager.instance.GetMemberByID(MemberManager.instance.LeaderId)));
             __result = leader.isDead
                        || leader.IsUnconscious
-                       && MemberManager.instance.GetAllShelteredMembers().All(m => m.member.isDead || m.member.IsUnconscious);
+                       && MemberManager.instance.GetAllShelteredMembers().All(m => m.member.isDead || m.member.IsUnconscious)
+                       || leaderParty is not null
+                       && leaderParty.m_partyMembers.All(m => m.memberRH.member.isDead || m.memberRH.member.IsUnconscious);
 
             return false;
         }
