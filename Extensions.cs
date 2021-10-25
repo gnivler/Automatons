@@ -22,13 +22,12 @@ namespace Automatons
 
         internal static bool IsUsable(this Object_Base objectBase)
         {
-            return !objectBase.beingUsed && !objectBase.IsGhost;
+            return !objectBase.beingUsed && objectBase.IsConstructionCompleted;
         }
 
         internal static bool HasActiveInteractionMembers(this Object_Base objectBase)
         {
             return objectBase.interactions.Any(i => i.interactionMembers.Any());
-            // maybe need to check to see if the object has interactions registered but where the survivor doesn't actually have a job for it
         }
 
         internal static bool HasEmptyQueues(this Member member)

@@ -215,12 +215,8 @@ namespace Automatons
         {
             try
             {
-                if (!Mod.Firefighting.Value)
-                {
-                    return;
-                }
-
-                if (member.currentjob?.jobInteractionType is InteractionTypes.InteractionType.ExtinguishFire)
+                if (!Mod.Firefighting.Value
+                    || member.currentjob?.jobInteractionType is InteractionTypes.InteractionType.ExtinguishFire)
                 {
                     return;
                 }
@@ -237,7 +233,7 @@ namespace Automatons
                     Mod.Log($"{burningObject.name} is burning and not being extinguished");
                     Job job;
                     var extinguisher = (Object_FireExtinguisher)ObjectManager.instance.GetNearestObjectsOfType(ObjectManager.ObjectType.FireExtinguisher, member.transform.position)
-                        .FirstOrDefault(o => o.IsUsable());
+                        .FirstOrDefault(o => !((Object_FireExtinguisher)o).InUse);
                     if (extinguisher is not null)
                     {
                         Mod.Log($"Sending {member.name} to {burningObject.name} with extinguisher");
@@ -549,8 +545,11 @@ namespace Automatons
                     {
                         job.obj.interactions.Do(i =>
                         {
-                            Mod.Log($"Cancelling {i.interactionType}");
-                            i.CancelAllJobs();
+                            if (i.interactionType is not InteractionTypes.InteractionType.ExtinguishFire)
+                            {
+                                Mod.Log($"Cancelling {i.interactionType}");
+                                i.CancelAllJobs();
+                            }
                         });
                     }
                 }
