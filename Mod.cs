@@ -67,7 +67,7 @@ namespace Automatons
             LogFile = Path.Combine(new FileInfo(Assembly.GetExecutingAssembly().Location).DirectoryName!, "log.txt");
             dev = SystemInfo.deviceName == "MEOWMEOW";
             Log("Automatons Startup");
-            Log(new string('=', 50));
+            Log(new string('=', 80));
             harmony.PatchAll(typeof(Patches));
         }
 

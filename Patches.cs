@@ -165,6 +165,8 @@ namespace Automatons
         [HarmonyPostfix]
         public static void SaveManagerLoadFromCurrentSlotPostfix()
         {
+            Mod.Log("Load game");
+            Mod.Log(new string('=', 80));
             ClearGlobals();
         }
 

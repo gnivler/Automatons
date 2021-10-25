@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -237,21 +238,22 @@ namespace Automatons
                     if (extinguisher is not null)
                     {
                         Mod.Log($"Sending {member.name} to {burningObject.name} with extinguisher");
-                        extinguisher.beingUsed = true;
-                        var interaction = burningObject.GetComponent<ObjectInteraction_UseFireExtinguisher>();
+                        extinguisher.m_inUse = true;
+                        var useFireExtinguisher = burningObject.GetComponent<ObjectInteraction_UseFireExtinguisher>();
                         job = new Job_UseFireExtinguisher(
-                            member.memberRH, interaction, burningObject.obj, extinguisher.GetInteractionTransform(0), extinguisher);
+                            member.memberRH, useFireExtinguisher, burningObject.obj, extinguisher.ChooseValidInteractionPoint(), extinguisher);
+
                     }
                     else
                     {
                         Mod.Log($"Sending {member.name} to extinguish {burningObject.name}");
                         var interaction = burningObject.GetComponent<ObjectInteraction_ExtinguishFire>();
                         var source = ObjectManager.instance.GetNearestObjectOfCategory(ObjectManager.ObjectCategory.WaterButt, member.transform.position);
-                        job = new Job_ExtinguishFire(member.memberRH, interaction, burningObject.obj, source.GetInteractionTransform(0), source);
+                        job = new Job_ExtinguishFire(member.memberRH, interaction, burningObject.obj, source.ChooseValidInteractionPoint(), source);
                     }
 
-                    member.AddJob(job);
                     burningObject.isBeingExtinguished = true;
+                    member.jobQueue.Add(job);
                     break;
                 }
             }
