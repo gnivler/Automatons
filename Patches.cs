@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Management.Instrumentation;
 using HarmonyLib;
+using Unity.Jobs.LowLevel.Unsafe;
 using UnityEngine;
 using static Automatons.Helper;
 
@@ -132,8 +133,11 @@ namespace Automatons
         [HarmonyPostfix]
         public static void MemberAIAwakePatch(MemberAI __instance)
         {
-            var go = __instance.gameObject.AddComponent<InteractionNeeds>();
-            go.Member = __instance.memberRH.member;
+            if (MemberManager.instance.GetAllShelteredMembers().Contains(__instance.memberRH))
+            {
+                var go = __instance.gameObject.AddComponent<InteractionNeeds>();
+                go.Member = __instance.memberRH.member;
+            }
         }
 
         [HarmonyPatch(typeof(Member), "Update")]
@@ -184,5 +188,12 @@ namespace Automatons
 
             return false;
         }
+
+        //[HarmonyPatch(typeof(Job), MethodType.Constructor, typeof(MemberReferenceHolder), typeof(Object_Base), typeof(ObjectInteraction_Base), typeof(Transform), typeof(bool), typeof(float), typeof(float))]
+        //[HarmonyPostfix]
+        //public static void JobCtorPostfix(Action ___onCancelJob)
+        //{
+        //    Mod.Log(___onCancelJob?.Method.Name);
+        //}
     }
 }

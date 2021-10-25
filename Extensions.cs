@@ -20,9 +20,9 @@ namespace Automatons
             return pathLength;
         }
 
-        internal static bool IsAlreadyRepairing(this Object_Base objectBase)
+        internal static bool IsUsable(this Object_Base objectBase)
         {
-            return objectBase.GetComponent<ObjectInteraction_Repair>().mem != null;
+            return !objectBase.beingUsed && !objectBase.IsGhost;
         }
 
         internal static bool HasActiveInteractionMembers(this Object_Base objectBase)

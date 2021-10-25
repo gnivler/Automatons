@@ -7,13 +7,15 @@ namespace Automatons
     {
         internal Member Member;
         private float timer;
+        private float idleTimer;
 
         private static readonly AccessTools.FieldRef<MemberAI, NeedsStat.NeedsStatType> currentPriorityNeed =
             AccessTools.FieldRefAccess<MemberAI, NeedsStat.NeedsStatType>("currentPriorityNeed");
 
         private void Update()
         {
-            if (Member.OutOnExpedition)
+            if (Member.OutOnExpedition
+                || Member.m_outOnLoan)
             {
                 return;
             }
@@ -24,7 +26,7 @@ namespace Automatons
                 return;
             }
 
-            timer -= Time.deltaTime;
+            timer -= 10;
             if (IsDoingInteraction(Member))
             {
                 AccessTools.Method(typeof(MemberAI), "EvaluateNeeds").Invoke(Member.memberRH.memberAI, new object[] { });
@@ -35,6 +37,18 @@ namespace Automatons
                     Member.CancelAIJobsImmediately();
                     Member.memberRH.memberAI.FindNeedsJob();
                 }
+            }
+
+            // collect idle timer
+            if (Member.currentjob is null)
+            {
+                idleTimer += Time.deltaTime;
+            }
+
+            if (idleTimer > 10)
+            {
+                Helper.DoReading(Member, true);
+                idleTimer -= 10;
             }
         }
 

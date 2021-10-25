@@ -20,7 +20,7 @@ namespace Automatons
     {
         private const string PluginGUID = "ca.gnivler.sheltered2.Automatons";
         private const string PluginName = "Automatons";
-        private const string PluginVersion = "1.4.3";
+        private const string PluginVersion = "1.4.4";
         private static string LogFile;
         private static bool dev;
 
@@ -137,7 +137,7 @@ namespace Automatons
 
                 if (MemberManager.instance is not null)
                 {
-                    var everyone = MemberManager.instance.currentMembers.Concat(SlaveManager.instance.m_currentSlaves).Concat(NPCVisitManager.instance.currentVisitors).Concat(NPCVisitManager.instance.deadVisitors);
+                    var everyone = MemberManager.instance.currentMembers;
                     foreach (var member in everyone)
                     {
                         if (member.member.OutOnExpedition
@@ -167,32 +167,42 @@ namespace Automatons
                             member.member.InBreachParty = false;
                             member.member.OutOnLoan = false;
                             member.member.m_isUnconscious = false;
-                            NavMesh.SamplePosition(AreaManager.instance.m_surfaceArea.areaCollider.transform.position, out var hit, 50f, -1);
-                            member.member.transform.position = hit.position;
-
+                            foreach (var job in member.member.jobQueue)
+                            {
+                                if (job.obj is not null)
+                                {
+                                    job.obj.interactions.Do(i =>
+                                    {
+                                        Log($"Cancelling {i.interactionType}");
+                                        i.CancelAllJobs();
+                                    });
+                                }
+                            }
+                            
                             foreach (var obj in ObjectManager.instance.GetAllObjects())
                             {
                                 foreach (var interaction in obj.interactions)
                                 {
-                                    interaction.interactionMembers.Clear();
+                                    if (interaction.InteractionMemberCount == 0)
+                                    {
+                                        continue;
+                                    }
+                                    try
+                                    {
+                                        interaction.FinishInteraction(member);
+                                    }
+                                    catch
+                                    {
+                                        // ignored
+                                    }
                                 }
 
                                 obj.beingUsed = false;
                                 obj.m_isBeingMoved = false;
                             }
 
-                            //foreach (var breacher in NPCVisitManager.instance.m_validBreachersForCombat)
-                            //{
-                            //    breacher.Damage(500);
-                            //}
-                            //
-                            //for (var i = 0; i < ExplorationManager.Instance.Parties.Count; i++)
-                            //{
-                            //    var p = ExplorationManager.Instance.Parties[i];
-                            //    p.m_stateStack.Do(s => s.state = Party.PartyState.ReturningToShelter);
-                            //}
-
-
+                            NavMesh.SamplePosition(AreaManager.instance.m_surfaceArea.areaCollider.transform.position, out var hit, 20f, -1);
+                            member.member.transform.position = hit.position;
                             Helper.ShowFloatie("Everything cleared!", member.baseCharacter);
                         }
                         catch (Exception ex)

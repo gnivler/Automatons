@@ -65,7 +65,7 @@
         <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.AIModule.dll</HintPath>
       </Reference>
       <Reference Include="UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\BepInEx\DumpedAssemblies\UnityEngine.CoreModule.dll</HintPath>
       </Reference>
       <Reference Include="UnityEngine.InputLegacyModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
         <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
@@ -86,6 +86,10 @@
     <ItemGroup>
       <Content Include="LICENSE" />
       <Content Include="README.md" />
+    </ItemGroup>
+    <ItemGroup>
+      <ReferencePathWithRefAssemblies Update="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\Facades\netstandard.dll" />
+      <ReferencePathWithRefAssemblies Update="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\mscorlib.dll" />
     </ItemGroup>
 
     <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
