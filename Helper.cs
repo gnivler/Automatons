@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.AI;
@@ -385,11 +386,10 @@ namespace Automatons
                     && !IsBadWeather())
                 {
                     Mod.Log($"Sending {member.name} to repair {damagedObject.name} at {damagedObject.integrityNormalised * 100:f1}%");
-                    var inter = damagedObject.GetComponent<ObjectInteraction_Repair>();
-                    var job = new Job(member.memberRH, damagedObject, inter, damagedObject.GetInteractionTransform(0));
-
+                    var i = damagedObject.GetComponent<ObjectInteraction_Repair>();
+                    var job = new Job(member.memberRH, damagedObject, i, damagedObject.GetInteractionTransform(0));
                     member.AddJob(job);
-                    member.currentjob = job; // TODO test if these are useful
+                    member.currentjob = job;
                     damagedObject.beingUsed = true;
                     break;
                 }
@@ -407,18 +407,19 @@ namespace Automatons
 
             var bed = ObjectManager.instance.GetNearestObjectsOfCategory(ObjectManager.ObjectCategory.Bed, member.transform.position)
                 .FirstOrDefault(b => b.IsUsable() && !b.IsWithinHoldingCell);
-            if (bed is not null)
+            if (bed is not null
+                && bed.GetInteractionByType(InteractionTypes.InteractionType.Sleep).interactionMembers.Count == 0)
             {
                 Job job = default;
                 if (member.needs.fatigue.value > 20)
                 {
-                    job = new Job(member.memberRH, bed, bed.GetComponent<ObjectInteraction_Sleep>(), bed.GetInteractionTransform(0));
-                    lastState(member.memberRH.memberAI) = MemberAI.AiState.Rest;
+                    job = new Job(member.memberRH, bed, bed.GetComponent<ObjectInteraction_Sleep>(), bed.GetInteractionByType(InteractionTypes.InteractionType.Sleep).transform);
+                    member.memberRH.memberAI.lastState = MemberAI.AiState.Rest;
                 }
                 else if (member.healthNormalised * 100 < 100)
                 {
-                    job = new Job(member.memberRH, bed, bed.GetComponent<ObjectInteraction_Rest>(), bed.GetInteractionTransform(0));
-                    lastState(member.memberRH.memberAI) = MemberAI.AiState.Rest;
+                    job = new Job(member.memberRH, bed, bed.GetComponent<ObjectInteraction_Rest>(), bed.GetInteractionByType(InteractionTypes.InteractionType.Sleep).transform);
+                    member.memberRH.memberAI.lastState = MemberAI.AiState.Rest;
                 }
 
                 if (job is not null)
@@ -432,7 +433,8 @@ namespace Automatons
 
         internal static void DoShelterCleaning(Member member, bool _)
         {
-            if (EffectsManager.instance is null
+            if (!Mod.ShelterCleaning.Value
+                || EffectsManager.instance is null
                 || !member.HasEmptyQueues()
                 || member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
             {
@@ -442,61 +444,65 @@ namespace Automatons
             var manager = AreaManager.instance;
             try
             {
-                var mop = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Mop).FirstOrDefault(m => m.IsUsable());
                 float tableDirt = default;
                 float generatorDirt = default;
                 var tables = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.TableAndChairs);
                 var generators = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Generator);
-
                 foreach (var area in manager.areas)
                 {
                     // copied from CalculateDirtValue
-                    for (int index = 0; index < tables.Count; ++index)
+                    foreach (var table in tables)
                     {
                         var bounds = area.areaCollider.bounds;
-                        if (bounds.Contains(tables[index].transform.position))
-                            tableDirt += 5f * tables[index].GetComponent<Object_TableAndChairs>().DirtyPlates;
+                        if (bounds.Contains(table.transform.position))
+                            tableDirt += 5f * table.GetComponent<Object_TableAndChairs>().DirtyPlates;
                     }
 
-                    for (int index = 0; index < generators.Count; ++index)
+                    foreach (var table in generators)
                     {
                         var bounds = area.areaCollider.bounds;
-                        if (bounds.Contains(generators[index].transform.position))
-                            generatorDirt += 5f * generators[index].GetComponent<Object_Generator>().WasteCount;
+                        if (bounds.Contains(table.transform.position))
+                            generatorDirt += 5f * table.GetComponent<Object_Generator>().WasteCount;
                     }
                 }
 
                 var dirt = manager.areas.Sum(a => manager.CalculateDirtValue(a));
+                if (dirt < Mod.ShelterCleaningThreshold.Value)
+                {
+                    return;
+                }
+
+                Job job;
+                if (generatorDirt > 0)
+                {
+                    foreach (var generator in generators.Where(t =>
+                        ((Object_Generator)t).WasteCount > 0
+                        && t.GetComponent<ObjectInteraction_CleanObject>().interactionMembers.Count == 0))
+                    {
+                        Mod.Log($"Sending {member.name} to clean up fuel cans");
+                        job = new Job(member.memberRH, generator, generator.GetInteractionByType(InteractionTypes.InteractionType.Cleaning), generator.ChooseValidInteractionPoint());
+                        member.AddJob(job);
+                        return;
+                    }
+                }
+
+                if (tableDirt > 0)
+                {
+                    foreach (var table in tables.Where(t =>
+                        ((Object_TableAndChairs)t).DirtyPlates > 0
+                        && t.GetComponent<ObjectInteraction_CleanObject>().interactionMembers.Count == 0))
+                    {
+                        Mod.Log($"Sending {member.name} to clean table");
+                        job = new Job(member.memberRH, table, table.GetInteractionByType(InteractionTypes.InteractionType.Cleaning), table.ChooseValidInteractionPoint());
+                        member.AddJob(job);
+                        return;
+                    }
+                }
+
+                var mop = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Mop).FirstOrDefault(m => m.IsUsable());
                 if (mop is not null
                     && dirt > Mod.ShelterCleaningThreshold.Value)
                 {
-                    Job job;
-                    if (generatorDirt > 0)
-                    {
-                        foreach (var table in generators.Where(t =>
-                            ((Object_Generator)t).WasteCount > 0
-                            && t.GetComponent<ObjectInteraction_CleanObject>().interactionMembers.Count == 0))
-                        {
-                            Mod.Log($"Sending {member.name} to clean up fuel cans");
-                            job = new Job(member.memberRH, table, table.GetInteractionByType(InteractionTypes.InteractionType.Cleaning), table.ChooseValidInteractionPoint());
-                            member.AddJob(job);
-                            return;
-                        }
-                    }
-
-                    if (tableDirt > 0)
-                    {
-                        foreach (var table in tables.Where(t =>
-                            ((Object_TableAndChairs)t).DirtyPlates > 0
-                            && t.GetComponent<ObjectInteraction_CleanObject>().interactionMembers.Count == 0))
-                        {
-                            Mod.Log($"Sending {member.name} to clean table");
-                            job = new Job(member.memberRH, table, table.GetInteractionByType(InteractionTypes.InteractionType.Cleaning), table.ChooseValidInteractionPoint());
-                            member.AddJob(job);
-                            return;
-                        }
-                    }
-
                     Mod.Log($"Sending {member.name} to clean the shelter");
                     job = new Job_CleanShelter(member.memberRH, mop.GetComponent<ObjectInteraction_CleanShelter>(), (Object_MopAndBucket)mop, mop.transform);
                     member.AddJob(job);
@@ -554,14 +560,30 @@ namespace Automatons
                 return;
             }
 
-            //Mod.Log(BurnableObjects.Any(o => o.isBurning && !o.obj.HasActiveInteractionMembers()));
             if (BreachManager.instance.inProgress
                 && !BurnableObjects.Where(o => o.isBurning && !o.isBeingExtinguished).All(b => b.obj.IsSurfaceObject)
                 || !BreachManager.instance.inProgress
                 && BurnableObjects.Any(o => o.isBurning && !o.isBeingExtinguished))
             {
                 Mod.Log($"Cancelling everything for {member.name}");
-                CancelEverythingRelatedToMemberActivity(member);
+                // check every interaction by member jobs and cancel that
+                foreach (var job in member.jobQueue)
+                {
+                    if (job.obj is not null)
+                    {
+                        job.obj.beingUsed = false;
+                        job.obj.interactions.Do(i =>
+                        {
+                            if (i.interactionType is not InteractionTypes.InteractionType.ExtinguishFire)
+                            {
+                                i.CancelAllJobs();
+                            }
+                        });
+                    }
+                }
+
+                member.CancelJobsImmediately();
+                member.CancelAIJobsImmediately();
                 DoFirefighting(member, false);
                 return;
             }

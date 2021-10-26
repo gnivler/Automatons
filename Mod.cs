@@ -20,7 +20,7 @@ namespace Automatons
     {
         private const string PluginGUID = "ca.gnivler.sheltered2.Automatons";
         private const string PluginName = "Automatons";
-        private const string PluginVersion = "1.4.4";
+        private const string PluginVersion = "1.5.0";
         private static string LogFile;
         private static bool dev;
 
@@ -87,8 +87,8 @@ namespace Automatons
 
                 Helper.ShowFloatie("Automation disabled", member.baseCharacter);
                 Helper.DisabledAutomatonSurvivors.Add(member.member);
-                member.member.CancelJobsImmediately();
-                member.member.CancelAIJobsImmediately();
+                Log($"Cancelling everything related to {member.name}");
+                Helper.CancelEverythingRelatedToMemberActivity(member.member);
                 return;
             }
 
@@ -111,8 +111,8 @@ namespace Automatons
                     MemberManager.instance.GetAllShelteredMembers().Do(m =>
                     {
                         Helper.DisabledAutomatonSurvivors.Add(m.member);
-                        m.member.CancelJobsImmediately();
-                        m.member.CancelAIJobsImmediately();
+                        Log($"Cancelling everything related to {m.name}");
+                        Helper.CancelEverythingRelatedToMemberActivity(m.member);
                         Helper.ShowFloatie("Automation disabled", m.baseCharacter);
                     });
                     return;
@@ -138,7 +138,7 @@ namespace Automatons
 
                 if (MemberManager.instance is not null)
                 {
-                    var everyone = MemberManager.instance.currentMembers;
+                    var everyone = MemberManager.instance.GetAllShelteredMembers();
                     foreach (var member in everyone)
                     {
                         if (member.member.OutOnExpedition
@@ -155,55 +155,36 @@ namespace Automatons
                             member.member.m_carriedFood = null;
                             member.member.m_carriedWater = 0;
                             member.member.m_corpseScript = null;
+                            member.member.OutOnExpedition = false;
+                            member.member.InBreachParty = false;
+                            member.member.OutOnLoan = false;
+                            member.member.m_isUnconscious = false;
+                            member.ForcefullyExitAnimationSubStates();
+                            Log($"Cancelling everything related to {member.name}");
+                            Helper.CancelEverythingRelatedToMemberActivity(member.member);
+                            NavMesh.SamplePosition(AreaManager.instance.m_surfaceArea.areaCollider.transform.position, out var hit, 20f, -1);
+                            member.member.transform.position = hit.position;
                             var corpse = member.GetComponent<Obj_Corpse>();
                             if (corpse is not null)
                             {
                                 corpse.RemoveFromArea();
                             }
 
-                            member.ForcefullyExitAnimationSubStates();
-                            member.member.CancelJobsImmediately();
-                            member.member.CancelAIJobsImmediately();
-                            member.member.OutOnExpedition = false;
-                            member.member.InBreachParty = false;
-                            member.member.OutOnLoan = false;
-                            member.member.m_isUnconscious = false;
-                            foreach (var job in member.member.jobQueue)
-                            {
-                                if (job.obj is not null)
-                                {
-                                    job.obj.interactions.Do(i =>
-                                    {
-                                        Log($"Cancelling {i.interactionType}");
-                                        i.CancelAllJobs();
-                                    });
-                                }
-                            }
-                            
                             foreach (var obj in ObjectManager.instance.GetAllObjects())
                             {
                                 foreach (var interaction in obj.interactions)
                                 {
-                                    if (interaction.InteractionMemberCount == 0)
-                                    {
-                                        continue;
-                                    }
                                     try
                                     {
-                                        interaction.FinishInteraction(member);
+                                        interaction.ForceUnregister(member);
                                     }
-                                    catch
+                                    catch (Exception ex)
                                     {
-                                        // ignored
+                                        Log(ex);
                                     }
                                 }
-
-                                obj.beingUsed = false;
-                                obj.m_isBeingMoved = false;
                             }
 
-                            NavMesh.SamplePosition(AreaManager.instance.m_surfaceArea.areaCollider.transform.position, out var hit, 20f, -1);
-                            member.member.transform.position = hit.position;
                             Helper.ShowFloatie("Everything cleared!", member.baseCharacter);
                         }
                         catch (Exception ex)

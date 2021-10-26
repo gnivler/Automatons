@@ -33,9 +33,7 @@ namespace Automatons
                 Member.memberRH.memberAI.EvaluateNeeds();
                 if (Member.memberRH.memberAI.currentPriorityNeed is not NeedsStat.NeedsStatType.Max)
                 {
-                    Mod.Log($"Cancelling everything for {Member.name}");
                     Mod.Log($"{Member.name} found needs job during interaction {Member.currentjob.jobInteractionType}");
-                    Helper.CancelEverythingRelatedToMemberActivity(Member);
                     Member.memberRH.memberAI.FindNeedsJob();
                     return;
                 }
