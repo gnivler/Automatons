@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -9,7 +7,6 @@ using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.AI;
-using Random = UnityEngine.Random;
 
 // ReSharper disable InconsistentNaming
 
@@ -20,7 +17,7 @@ namespace Automatons
     {
         private const string PluginGUID = "ca.gnivler.sheltered2.Automatons";
         private const string PluginName = "Automatons";
-        private const string PluginVersion = "1.5.0";
+        private const string PluginVersion = "1.5.1";
         private static string LogFile;
         private static bool dev;
 
@@ -138,6 +135,7 @@ namespace Automatons
 
                 if (MemberManager.instance is not null)
                 {
+                    MemberManager.instance.currentMembers[0].member.m_leaderRank = Member.LeaderStatus.General;
                     var everyone = MemberManager.instance.GetAllShelteredMembers();
                     foreach (var member in everyone)
                     {
@@ -151,14 +149,11 @@ namespace Automatons
                         {
                             Helper.ClearGlobals();
                             BreachManager.instance.ResetSpawnTime();
+                            member.member.m_isUnconscious = false;
                             member.member.Heal(500);
-                            member.member.m_carriedFood = null;
-                            member.member.m_carriedWater = 0;
-                            member.member.m_corpseScript = null;
                             member.member.OutOnExpedition = false;
                             member.member.InBreachParty = false;
                             member.member.OutOnLoan = false;
-                            member.member.m_isUnconscious = false;
                             member.ForcefullyExitAnimationSubStates();
                             Log($"Cancelling everything related to {member.name}");
                             Helper.CancelEverythingRelatedToMemberActivity(member.member);
@@ -263,8 +258,9 @@ namespace Automatons
                 Patches.Cheat = !Patches.Cheat;
             }
 
-            if (Input.GetKeyDown(KeyCode.F8))
+            if (Input.GetKeyDown(KeyCode.F9))
             {
+                Log("F9");
             }
         }
 

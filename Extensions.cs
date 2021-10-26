@@ -1,5 +1,4 @@
 using System.Linq;
-using Unity.Jobs.LowLevel.Unsafe;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -25,9 +24,9 @@ namespace Automatons
             return !objectBase.beingUsed && objectBase.IsConstructionCompleted && !objectBase.isBroken;
         }
 
-        internal static bool HasActiveInteractionMembers(this Object_Base objectBase)
+        internal static bool HasActiveJobs(this Object_Base objectBase)
         {
-            return objectBase.interactions.Any(i => i.interactionMembers.Any());
+            return objectBase.interactions.Any(i => i.JobCount > 0);
         }
 
         internal static bool HasEmptyQueues(this Member member)

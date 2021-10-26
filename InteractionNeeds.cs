@@ -1,4 +1,3 @@
-using HarmonyLib;
 using UnityEngine;
 
 namespace Automatons
@@ -8,9 +7,6 @@ namespace Automatons
         internal Member Member;
         private float timer;
         private float idleTimer;
-
-        private static readonly AccessTools.FieldRef<MemberAI, NeedsStat.NeedsStatType> currentPriorityNeed =
-            AccessTools.FieldRefAccess<MemberAI, NeedsStat.NeedsStatType>("currentPriorityNeed");
 
         private void Update()
         {
