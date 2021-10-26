@@ -80,6 +80,27 @@ namespace Automatons
             }
         }
 
+        internal static void CancelEverythingRelatedToMemberActivity(Member member)
+        {
+            // check every interaction by member jobs and cancel that
+            foreach (var job in member.jobQueue)
+            {
+                if (job.obj is not null)
+                {
+                    job.obj.interactions.Do(i =>
+                    {
+                        if (i.interactionType is not InteractionTypes.InteractionType.ExtinguishFire)
+                        {
+                            i.CancelAllJobs();
+                        }
+                    });
+                }
+            }
+
+            member.CancelJobsImmediately();
+            member.CancelAIJobsImmediately();
+        }
+
         internal static void ClearGlobals()
         {
             DisabledAutomatonSurvivors.Clear();
@@ -242,7 +263,6 @@ namespace Automatons
                         var useFireExtinguisher = burningObject.GetComponent<ObjectInteraction_UseFireExtinguisher>();
                         job = new Job_UseFireExtinguisher(
                             member.memberRH, useFireExtinguisher, burningObject.obj, extinguisher.ChooseValidInteractionPoint(), extinguisher);
-
                     }
                     else
                     {
@@ -378,25 +398,26 @@ namespace Automatons
 
         internal static void DoRest(Member member, bool _)
         {
-            if (!member.HasEmptyQueues()
-                || member.currentjob is not null
+            if (!Mod.RestUp.Value
+                || !member.HasEmptyQueues()
                 || member.memberRH.memberAI.lastState == MemberAI.AiState.Rest)
             {
                 return;
             }
 
-            var bed = ObjectManager.instance.GetNearestObjectsOfCategory(ObjectManager.ObjectCategory.Bed, member.transform.position).FirstOrDefault(b => !b.beingUsed && !b.isBroken && !b.IsWithinHoldingCell);
+            var bed = ObjectManager.instance.GetNearestObjectsOfCategory(ObjectManager.ObjectCategory.Bed, member.transform.position)
+                .FirstOrDefault(b => b.IsUsable() && !b.IsWithinHoldingCell);
             if (bed is not null)
             {
                 Job job = default;
                 if (member.needs.fatigue.value > 20)
                 {
-                    job = new Job(member.memberRH, bed, bed.GetComponent<ObjectInteraction_Sleep>(), bed.ChooseValidInteractionPoint());
+                    job = new Job(member.memberRH, bed, bed.GetComponent<ObjectInteraction_Sleep>(), bed.GetInteractionTransform(0));
                     lastState(member.memberRH.memberAI) = MemberAI.AiState.Rest;
                 }
                 else if (member.healthNormalised * 100 < 100)
                 {
-                    job = new Job(member.memberRH, bed, bed.GetComponent<ObjectInteraction_Rest>(), bed.ChooseValidInteractionPoint());
+                    job = new Job(member.memberRH, bed, bed.GetComponent<ObjectInteraction_Rest>(), bed.GetInteractionTransform(0));
                     lastState(member.memberRH.memberAI) = MemberAI.AiState.Rest;
                 }
 
@@ -539,25 +560,8 @@ namespace Automatons
                 || !BreachManager.instance.inProgress
                 && BurnableObjects.Any(o => o.isBurning && !o.isBeingExtinguished))
             {
-                Mod.Log("FindJobs cancel jobs");
-                // check every interaction by member jobs and cancel that
-                foreach (var job in member.jobQueue)
-                {
-                    if (job.obj is not null)
-                    {
-                        job.obj.interactions.Do(i =>
-                        {
-                            if (i.interactionType is not InteractionTypes.InteractionType.ExtinguishFire)
-                            {
-                                Mod.Log($"Cancelling {i.interactionType}");
-                                i.CancelAllJobs();
-                            }
-                        });
-                    }
-                }
-
-                member.CancelJobsImmediately();
-                member.CancelAIJobsImmediately();
+                Mod.Log($"Cancelling everything for {member.name}");
+                CancelEverythingRelatedToMemberActivity(member);
                 DoFirefighting(member, false);
                 return;
             }

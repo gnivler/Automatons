@@ -129,14 +129,15 @@ namespace Automatons
             return false;
         }
 
-        [HarmonyPatch(typeof(MemberAI), "Awake")]
+        [HarmonyPatch(typeof(BaseCharacter), "SetUpSpawn")]
         [HarmonyPostfix]
-        public static void MemberAIAwakePatch(MemberAI __instance)
+        public static void BaseCharacterSetUpSpawnPostfix(BaseCharacter __instance)
         {
-            if (MemberManager.instance.GetAllShelteredMembers().Contains(__instance.memberRH))
+            if (__instance.isShelterMember)
             {
+                Mod.Log($"{__instance.baseRH.memberNavigation.member.name} interaction needs check added");
                 var go = __instance.gameObject.AddComponent<InteractionNeeds>();
-                go.Member = __instance.memberRH.member;
+                go.Member = __instance.baseRH.memberNavigation.member;
             }
         }
 
@@ -173,29 +174,13 @@ namespace Automatons
         [HarmonyPatch(typeof(SlaveAI), "Wander")]
         [HarmonyPrefix]
         public static bool SlaveAIWanderPrefix() => false;
-
+        
         // bugfix
         [HarmonyPatch(typeof(MemberManager), "IsTheLeaderDead")]
-        [HarmonyPrefix]
-        public static bool MemberManagerIsTheLeaderDeadPrefix(ref bool __runOriginal, ref bool __result)
+        [HarmonyPostfix]
+        public static void MemberManagerIsTheLeaderDeadPrefix(ref bool __result)
         {
-            __runOriginal = false;
-            var leader = MemberManager.instance.GetMemberByID(MemberManager.instance.LeaderId);
-            var leaderParty = ExplorationManager.Instance.Parties.FirstOrDefault(p => p.m_partyMembers.Any(m => m.memberRH.member == MemberManager.instance.GetMemberByID(MemberManager.instance.LeaderId)));
-            __result = leader.isDead
-                       || leader.IsUnconscious
-                       && MemberManager.instance.GetAllShelteredMembers().All(m => m.member.isDead || m.member.IsUnconscious)
-                       || leaderParty is not null
-                       && leaderParty.m_partyMembers.All(m => m.memberRH.member.isDead || m.memberRH.member.IsUnconscious);
-
-            return false;
+            __result =! __result;
         }
-
-        //[HarmonyPatch(typeof(Job), MethodType.Constructor, typeof(MemberReferenceHolder), typeof(Object_Base), typeof(ObjectInteraction_Base), typeof(Transform), typeof(bool), typeof(float), typeof(float))]
-        //[HarmonyPostfix]
-        //public static void JobCtorPostfix(Action ___onCancelJob)
-        //{
-        //    Mod.Log(___onCancelJob?.Method.Name);
-        //}
     }
 }

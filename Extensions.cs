@@ -22,7 +22,7 @@ namespace Automatons
 
         internal static bool IsUsable(this Object_Base objectBase)
         {
-            return !objectBase.beingUsed && objectBase.IsConstructionCompleted;
+            return !objectBase.beingUsed && objectBase.IsConstructionCompleted && !objectBase.isBroken;
         }
 
         internal static bool HasActiveInteractionMembers(this Object_Base objectBase)

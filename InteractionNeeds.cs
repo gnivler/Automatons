@@ -27,15 +27,17 @@ namespace Automatons
             }
 
             timer -= 10;
+
             if (IsDoingInteraction(Member))
             {
-                AccessTools.Method(typeof(MemberAI), "EvaluateNeeds").Invoke(Member.memberRH.memberAI, new object[] { });
-                if (currentPriorityNeed(Member.memberRH.memberAI) != NeedsStat.NeedsStatType.Max)
+                Member.memberRH.memberAI.EvaluateNeeds();
+                if (Member.memberRH.memberAI.currentPriorityNeed is not NeedsStat.NeedsStatType.Max)
                 {
-                    Mod.Log($"{Member.name} found needs job during interaction {Member.currentjob?.jobInteractionType}");
-                    Member.CancelJobsImmediately();
-                    Member.CancelAIJobsImmediately();
+                    Mod.Log($"Cancelling everything for {Member.name}");
+                    Mod.Log($"{Member.name} found needs job during interaction {Member.currentjob.jobInteractionType}");
+                    Helper.CancelEverythingRelatedToMemberActivity(Member);
                     Member.memberRH.memberAI.FindNeedsJob();
+                    return;
                 }
             }
 
@@ -48,13 +50,15 @@ namespace Automatons
             if (idleTimer > 10)
             {
                 Helper.DoReading(Member, true);
-                idleTimer -= 10;
             }
+
+            idleTimer -= 10;
         }
 
         private static bool IsDoingInteraction(Member member)
         {
-            return member.interactionType is InteractionTypes.InteractionType.Exercise
+            return member.interactionType
+                is InteractionTypes.InteractionType.Exercise
                 or InteractionTypes.InteractionType.ReadCharismaBook
                 or InteractionTypes.InteractionType.ReadIntelligenceBook
                 or InteractionTypes.InteractionType.ReadPerceptionBook
