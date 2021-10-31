@@ -47,11 +47,17 @@
       <Reference Include="0Harmony, Version=2.5.4.0, Culture=neutral, PublicKeyToken=null">
         <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\BepInEx\core\0Harmony.dll</HintPath>
       </Reference>
+      <Reference Include="0Harmony, Version=2.5.5.0, Culture=neutral, PublicKeyToken=null">
+        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\BepInEx\core\0Harmony.dll</HintPath>
+      </Reference>
       <Reference Include="Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
         <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\publicized_assemblies\Assembly-CSharp_publicized.dll</HintPath>
       </Reference>
-      <Reference Include="BepInEx, Version=5.4.15.0, Culture=neutral, PublicKeyToken=null">
+      <Reference Include="BepInEx, Version=5.4.17.0, Culture=neutral, PublicKeyToken=null">
         <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\BepInEx\core\BepInEx.dll</HintPath>
+      </Reference>
+      <Reference Include="FMODUnity, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\FMODUnity.dll</HintPath>
       </Reference>
       <Reference Include="NavMeshComponents, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
         <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\NavMeshComponents.dll</HintPath>
@@ -75,6 +81,9 @@
       </Reference>
       <Reference Include="UnityEngine.TerrainModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
         <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.TerrainModule.dll</HintPath>
+      </Reference>
+      <Reference Include="UnityEngine.UI, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
+        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.UI.dll</HintPath>
       </Reference>
       <Reference Include="UnityFx.Outline, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
         <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityFx.Outline.dll</HintPath>

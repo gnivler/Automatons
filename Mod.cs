@@ -7,6 +7,7 @@ using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.AI;
+using Random = System.Random;
 
 // ReSharper disable InconsistentNaming
 
@@ -17,7 +18,7 @@ namespace Automatons
     {
         private const string PluginGUID = "ca.gnivler.sheltered2.Automatons";
         private const string PluginName = "Automatons";
-        private const string PluginVersion = "1.5.1";
+        private const string PluginVersion = "1.6.0";
         private static string LogFile;
         private static bool dev;
 
@@ -39,6 +40,7 @@ namespace Automatons
         internal static ConfigEntry<bool> ShelterCleaning;
         internal static ConfigEntry<int> ShelterCleaningThreshold;
         internal static ConfigEntry<bool> RestUp;
+        internal static ConfigEntry<bool> FirstAid;
 
         private void Awake()
         {
@@ -52,6 +54,7 @@ namespace Automatons
             EnvironmentSeeking = Config.Bind("Toggle Jobs", "Avoid idling in bad weather and inclement areas when possible", true);
             ShelterCleaning = Config.Bind("Toggle Jobs", "Clean the shelter", true);
             RestUp = Config.Bind("Toggle Jobs", "Rest up when nothing else to do", true);
+            FirstAid = Config.Bind("Toggle Jobs", "Apply treatments for nausea, bleeding or radiation poisoning", true);
             NeedRepairSkillToRepair = Config.Bind("Adjustments", "Automatic Repairing skill needed to repair", true);
             FatigueThreshold = Config.Bind("Adjustments", "Fatigue Threshold", 50, new ConfigDescription("Survivors wont exercise or read past this percentage of fatigue", new AcceptableValueRange<int>(0, 75)));
             RepairThreshold = Config.Bind("Adjustments", "Repair Threshold", 25, new ConfigDescription("Survivors wont repair objects until they reach this percentage integrity", new AcceptableValueRange<int>(0, 90)));
@@ -248,19 +251,101 @@ namespace Automatons
 
             if (Input.GetKeyDown(KeyCode.F6))
             {
-                MemberManager.instance.GetAllShelteredMembers().Do(m => m.member.needs.loyalty.m_value = 100);
-                MemberManager.instance.GetAllShelteredMembers().Do(m => m.member.m_loyalty = Member.LoyaltyEnum.Loyal);
+                Mod.Log("F6");
+                //var everyone = MemberManager.instance!.currentMembers;
+                //foreach (var member in everyone)
+                //{
+                //    try
+                //    {
+                //        Helper.ClearGlobals();
+                //        BreachManager.instance.ResetSpawnTime();
+                //        member.member.m_isUnconscious = false;
+                //        member.member.Heal(500);
+                //        member.member.OutOnExpedition = false;
+                //        member.member.InBreachParty = false;
+                //        member.member.OutOnLoan = false;
+                //        member.ForcefullyExitAnimationSubStates();
+                //        Log($"Cancelling everything related to {member.name}");
+                //        Helper.CancelEverythingRelatedToMemberActivity(member.member);
+                //        NavMesh.SamplePosition(AreaManager.instance.m_surfaceArea.areaCollider.transform.position, out var hit, 20f, -1);
+                //        member.member.transform.position = hit.position;
+                //        if (member.member.name == "Andrew Bowman")
+                //        {
+                //            Log("ping");
+                //            //member.member.m_isCarryingCorpse = true;
+                //            //member.member.PutDownCorpse();
+                //            //member.member.m_bodybag.SetActive(false);
+                //            //member.member.m_isCarryingCorpse = false;
+                //        }
+                //
+                //        MemberManager.instance!.deadMembers.Do(m =>
+                //        {
+                //            Log(m.name);
+                //            m.GetComponent<Obj_Corpse>().RemoveFromArea();
+                //        });
+                //        foreach (var obj in ObjectManager.instance.GetAllObjects())
+                //        {
+                //            foreach (var interaction in obj.interactions)
+                //            {
+                //                try
+                //                {
+                //                    interaction.ForceUnregister(member);
+                //                }
+                //                catch (Exception ex)
+                //                {
+                //                    Log(ex);
+                //                }
+                //            }
+                //        }
+                //
+                //        ExplorationManager.Instance.Parties.Do(p => p.SetPartyToReturnToShelter(null));
+                //        Helper.ShowFloatie("Everything cleared!", member.baseCharacter);
+                //    }
+                //    catch (Exception ex)
+                //    {
+                //        Log(ex);
+                //    }
+                //}
+
+                return;
             }
 
-            if (Input.GetKeyDown(KeyCode.F7))
-
-            {
-                Patches.Cheat = !Patches.Cheat;
-            }
 
             if (Input.GetKeyDown(KeyCode.F9))
             {
                 Log("F9");
+                foreach (var m in MemberManager.instance.currentMembers)
+                {
+                    if (UnityEngine.Random.Range(0, 5) == 0)
+                    {
+                        m.member.illness.bleeding.SetActive(true);
+                    }
+                }
+            }
+
+            if (Input.GetKeyDown(KeyCode.F10))
+            {
+                Log("F10");
+                foreach (var m in MemberManager.instance.currentMembers)
+                {
+                    if (UnityEngine.Random.Range(0, 5) == 0)
+                    {
+                        m.member.illness.radiation.m_currentRads = 200;
+                        m.member.illness.radiation.SetActive(true);
+                    }
+                }
+            }
+
+            if (Input.GetKeyDown(KeyCode.F11))
+            {
+                Log("F11");
+                foreach (var m in MemberManager.instance.currentMembers)
+                {
+                    if (UnityEngine.Random.Range(0, 5) == 0)
+                    {
+                        m.member.illness.foodPoisoning.SetActive(true);
+                    }
+                }
             }
         }
 

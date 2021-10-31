@@ -1,11 +1,6 @@
-using System;
 using System.Collections.Generic;
-using System.Collections.Specialized;
-using System.Diagnostics;
 using System.Linq;
-using System.Management.Instrumentation;
 using HarmonyLib;
-using Unity.Jobs.LowLevel.Unsafe;
 using UnityEngine;
 using static Automatons.Helper;
 
@@ -16,58 +11,13 @@ namespace Automatons
 {
     public static class Patches
     {
-        internal static bool Cheat;
         private static bool initialized;
-
-        // cheat
-        [HarmonyPatch(typeof(CraftingPanel), "OnRecipeSlotPress")]
-        [HarmonyPrefix]
-        public static void CraftingPanelOnRecipeSlotPressPrefix(RecipeSlot recipeSlot)
-        {
-            if (Cheat)
-            {
-                foreach (var stack in recipeSlot.recipe.ingredients)
-                {
-                    ShelterInventoryManager.instance.inventory.AddItems(stack);
-                }
-            }
-        }
-
-        // bugfix
-        [HarmonyPatch(typeof(ObjectInteraction_Base), "RegisterForInteraction")]
-        [HarmonyPrefix]
-        public static bool ObjectInteraction_BaseRegisterForInteractionPrefix(
-            ObjectInteraction_Base __instance,
-            Dictionary<int, float> ___interactionTimers,
-            MemberReferenceHolder memberRH,
-            ref bool __runOriginal,
-            ref bool __result)
-        {
-            if (___interactionTimers.ContainsKey(memberRH.member.GetID))
-            {
-                __instance.obj.beingUsed = true;
-                __result = true;
-                __runOriginal = false;
-                return false;
-            }
-
-            __runOriginal = true;
-            return true;
-        }
 
         [HarmonyPatch(typeof(ObjectInteraction_HarvestTrap), "Awake")]
         [HarmonyPostfix]
         public static void ObjectInteraction_HarvestTrapAwakePostfix(ObjectInteraction_HarvestTrap __instance)
         {
             Traps.Add(__instance);
-        }
-
-        // bugfix
-        [HarmonyPatch(typeof(ObjectInteraction_CarryMeal), "SetFoodTaken")]
-        [HarmonyPrefix]
-        public static void ObjectInteraction_CarryMealSetFoodTakenPrefix(int id, ItemStack food, Dictionary<int, ItemStack> ___m_selectedFood)
-        {
-            ___m_selectedFood.Remove(id);
         }
 
         [HarmonyPatch(typeof(ObjectManager), "GetNearestObjectsOfType")]
@@ -121,23 +71,14 @@ namespace Automatons
             BurnableObjects.Add(__instance);
         }
 
-        [HarmonyPatch(typeof(MemberAI), "Wander")]
-        [HarmonyPrefix]
-        public static bool MemberAIWanderPrefix(ref bool __runOriginal)
-        {
-            __runOriginal = false;
-            return false;
-        }
-
         [HarmonyPatch(typeof(BaseCharacter), "SetUpSpawn")]
         [HarmonyPostfix]
         public static void BaseCharacterSetUpSpawnPostfix(BaseCharacter __instance)
         {
             if (__instance.isShelterMember)
             {
-                Mod.Log($"{__instance.baseRH.memberNavigation.member.name} interaction needs check added");
-                var go = __instance.gameObject.AddComponent<InteractionNeeds>();
-                go.Member = __instance.baseRH.memberNavigation.member;
+                var component = __instance.gameObject.AddComponent<InteractionNeeds>();
+                component.Member = __instance.baseRH.memberNavigation.member;
             }
         }
 
@@ -169,18 +110,6 @@ namespace Automatons
             Mod.Log("Load game");
             Mod.Log(new string('=', 80));
             ClearGlobals();
-        }
-
-        [HarmonyPatch(typeof(SlaveAI), "Wander")]
-        [HarmonyPrefix]
-        public static bool SlaveAIWanderPrefix() => false;
-        
-        // bugfix
-        [HarmonyPatch(typeof(MemberManager), "IsTheLeaderDead")]
-        [HarmonyPostfix]
-        public static void MemberManagerIsTheLeaderDeadPrefix(ref bool __result)
-        {
-            __result =! __result;
         }
     }
 }

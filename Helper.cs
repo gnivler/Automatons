@@ -18,7 +18,8 @@ namespace Automatons
         internal static readonly HashSet<Member> DisabledAutomatonSurvivors = new();
         private static readonly Dictionary<Member, float> MemberTimers = new();
         internal static readonly HashSet<ObjectInteraction_HarvestTrap> Traps = new();
-        private const int WaitDuration = 3;
+        private static float fireCheckTimer;
+        private const int WaitDuration = 4;
 
         private static IEnumerable<MethodInfo> ExtraJobs
         {
@@ -95,7 +96,6 @@ namespace Automatons
             }
 
             member.CancelJobsImmediately();
-            member.CancelAIJobsImmediately();
         }
 
         internal static void ClearGlobals()
@@ -182,16 +182,17 @@ namespace Automatons
                 return;
             }
 
-            var collection = GetAllPlanters().Cast<Object_Planter>().Where(p =>
+            var planters = GetAllPlanters().Cast<Object_Planter>().Where(p =>
                 !p.HasActiveJobs()
                 && !p.beingUsed
                 && p.GStage is not Object_Planter.GrowingStage.NoSeed
                 && (p.CurrentWaterLevel <= 0
                     || p.GStage == Object_Planter.GrowingStage.Harvestable));
 
-            foreach (var obj in collection)
+            foreach (var obj in planters)
             {
                 var planter = obj;
+                Mod.Log($"{planter.name} {planter.SeedType.name} {planter.GrowPercent}");
                 if (planter.CurrentWaterLevel > 0)
                 {
                     DoFarmingJob<ObjectInteraction_HarvestPlant>(planter, member);
@@ -279,6 +280,72 @@ namespace Automatons
             {
                 Mod.Log(ex);
             }
+        }
+
+        internal static void DoFirstAid(Member member, bool _)
+        {
+            if (!member.illness.IsIll()
+                || member.jobQueue.Any(job => job.jobInteractionType != InteractionTypes.InteractionType.Medicate))
+            {
+                return;
+            }
+
+            Object_Base closestCabinet = default;
+            ItemStack firstAidItem = default;
+            if (member.illness.bleeding.isActive)
+            {
+                Mod.Log($"{member.name} bleeding");
+                closestCabinet = GetClosestCabinetWithItem(member, "bandages");
+                if (closestCabinet is null)
+                {
+                    return;
+                }
+
+                firstAidItem = ((Object_MedicineCabinet)closestCabinet).inventory.inventory["bandages"].First();
+            }
+            else if (member.illness.radiation.isActive)
+            {
+                Mod.Log($"{member.name} radiated");
+                closestCabinet = GetClosestCabinetWithItem(member, "antirad");
+                if (closestCabinet is null)
+                {
+                    return;
+                }
+
+                firstAidItem = ((Object_MedicineCabinet)closestCabinet).inventory.inventory["antirad"].First();
+            }
+            else if (member.illness.foodPoisoning.isActive)
+            {
+                Mod.Log($"{member.name} sick");
+                closestCabinet = GetClosestCabinetWithItem(member, "antiemetic");
+                if (closestCabinet is null)
+                {
+                    return;
+                }
+
+                firstAidItem = ((Object_MedicineCabinet)closestCabinet).inventory.inventory["antiemetic"].First();
+            }
+
+            if (closestCabinet is null
+                || firstAidItem == null)
+            {
+                return;
+            }
+
+            var interaction = closestCabinet.GetInteractionByType(InteractionTypes.InteractionType.Medicate);
+            ((ObjectInteraction_Medicate)interaction).m_selectedMedicine = firstAidItem;
+            Mod.Log($"Sending {member} to use {firstAidItem.def.name}");
+            member.CancelJobsImmediately();
+            member.AddJob(new Job(member.memberRH, closestCabinet, closestCabinet.GetInteractionByType(InteractionTypes.InteractionType.Medicate), closestCabinet.ChooseValidInteractionPoint()));
+        }
+
+        private static Object_Base GetClosestCabinetWithItem(Member member, string item)
+        {
+            return ObjectManager.instance.GetObjectsOfCategory(ObjectManager.ObjectCategory.MedicineCabinet)
+                .Where(cabinet => ((Object_MedicineCabinet)cabinet).inventory.ContainsItems(item, 1)
+                                  && cabinet.GetInteractionByType(InteractionTypes.InteractionType.Medicate).JobCount == 0)
+                .OrderBy(cabinet => cabinet.transform.position.PathDistanceTo(member.transform.position))
+                .FirstOrDefault();
         }
 
         internal static void DoHarvestTraps(Member member, bool _)
@@ -372,7 +439,7 @@ namespace Automatons
             for (var index = 0; index < damagedObjects.Count; index++)
             {
                 var damagedObject = damagedObjects[index];
-                if (damagedObject.beingUsed)
+                if (damagedObject.HasActiveJobs())
                 {
                     continue;
                 }
@@ -437,83 +504,75 @@ namespace Automatons
             }
 
             var manager = AreaManager.instance;
-            try
+            float tableDirt = default;
+            float generatorDirt = default;
+            var tables = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.TableAndChairs);
+            var generators = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Generator);
+            foreach (var area in manager.areas)
             {
-                float tableDirt = default;
-                float generatorDirt = default;
-                var tables = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.TableAndChairs);
-                var generators = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Generator);
-                foreach (var area in manager.areas)
+                // copied from CalculateDirtValue
+                foreach (var table in tables)
                 {
-                    // copied from CalculateDirtValue
-                    foreach (var table in tables)
-                    {
-                        var bounds = area.areaCollider.bounds;
-                        if (bounds.Contains(table.transform.position))
-                            tableDirt += 5f * table.GetComponent<Object_TableAndChairs>().DirtyPlates;
-                    }
-
-                    foreach (var table in generators)
-                    {
-                        var bounds = area.areaCollider.bounds;
-                        if (bounds.Contains(table.transform.position))
-                            generatorDirt += 5f * table.GetComponent<Object_Generator>().WasteCount;
-                    }
+                    var bounds = area.areaCollider.bounds;
+                    if (bounds.Contains(table.transform.position))
+                        tableDirt += 5f * table.GetComponent<Object_TableAndChairs>().DirtyPlates;
                 }
 
-                var dirt = manager.areas.Sum(a => manager.CalculateDirtValue(a));
-                if (dirt < Mod.ShelterCleaningThreshold.Value)
+                foreach (var table in generators)
                 {
-                    return;
-                }
-
-                Job job;
-                if (generatorDirt > 0)
-                {
-                    foreach (var generator in generators.Where(t =>
-                        ((Object_Generator)t).WasteCount > 0
-                        && t.GetComponent<ObjectInteraction_CleanObject>().interactionMembers.Count == 0))
-                    {
-                        Mod.Log($"Sending {member.name} to clean up fuel cans");
-                        job = new Job(member.memberRH, generator, generator.GetInteractionByType(InteractionTypes.InteractionType.Cleaning), generator.ChooseValidInteractionPoint());
-                        member.AddJob(job);
-                        return;
-                    }
-                }
-
-                if (tableDirt > 0)
-                {
-                    foreach (var table in tables.Where(t =>
-                        ((Object_TableAndChairs)t).DirtyPlates > 0
-                        && t.GetComponent<ObjectInteraction_CleanObject>().interactionMembers.Count == 0))
-                    {
-                        Mod.Log($"Sending {member.name} to clean table");
-                        job = new Job(member.memberRH, table, table.GetInteractionByType(InteractionTypes.InteractionType.Cleaning), table.ChooseValidInteractionPoint());
-                        member.AddJob(job);
-                        return;
-                    }
-                }
-
-                var mop = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Mop).FirstOrDefault(m => m.IsUsable());
-                if (mop is not null
-                    && dirt > Mod.ShelterCleaningThreshold.Value)
-                {
-                    Mod.Log($"Sending {member.name} to clean the shelter");
-                    job = new Job_CleanShelter(member.memberRH, mop.GetComponent<ObjectInteraction_CleanShelter>(), (Object_MopAndBucket)mop, mop.transform);
-                    member.AddJob(job);
-                    mop.beingUsed = true;
+                    var bounds = area.areaCollider.bounds;
+                    if (bounds.Contains(table.transform.position))
+                        generatorDirt += 5f * table.GetComponent<Object_Generator>().WasteCount;
                 }
             }
-            catch (Exception ex)
+
+            var dirt = manager.areas.Sum(area => manager.CalculateDirtValue(area));
+            if (dirt + tableDirt + generatorDirt < Mod.ShelterCleaningThreshold.Value)
             {
-                Mod.Log(ex);
+                return;
+            }
+
+            Job job;
+            if (generatorDirt > 0)
+            {
+                foreach (var generator in generators.Where(gen =>
+                    ((Object_Generator)gen).WasteCount > 0
+                    && gen.GetComponent<ObjectInteraction_CleanObject>().JobCount == 0))
+                {
+                    Mod.Log($"Sending {member.name} to clean up fuel cans");
+                    job = new Job(member.memberRH, generator, generator.GetInteractionByType(InteractionTypes.InteractionType.Cleaning), generator.ChooseValidInteractionPoint());
+                    member.AddJob(job);
+                    return;
+                }
+            }
+
+            if (tableDirt > 0)
+            {
+                foreach (var table in tables.Where(table =>
+                    ((Object_TableAndChairs)table).DirtyPlates > 0
+                    && table.GetComponent<ObjectInteraction_CleanObject>().JobCount == 0))
+                {
+                    Mod.Log($"Sending {member.name} to clean table");
+                    job = new Job(member.memberRH, table, table.GetInteractionByType(InteractionTypes.InteractionType.Cleaning), table.ChooseValidInteractionPoint());
+                    member.AddJob(job);
+                    return;
+                }
+            }
+
+            var mop = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.Mop).FirstOrDefault(m => m.interactions.Sum(interactionBase => interactionBase.JobCount) == 0);
+            if (mop is not null
+                && dirt + tableDirt + generatorDirt > Mod.ShelterCleaningThreshold.Value)
+            {
+                Mod.Log($"Sending {member.name} to clean the shelter");
+                job = new Job_CleanShelter(member.memberRH, mop.GetComponent<ObjectInteraction_CleanShelter>(), (Object_MopAndBucket)mop, mop.transform);
+                member.AddJob(job);
             }
         }
 
         private static void DoSolarPanelCleaning(Member member, bool _)
         {
             var panels = ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.SolarPanel);
-            foreach (var obj in panels.OrderBy(p => p.transform.position.PathDistanceTo(member.transform.position)))
+            foreach (var obj in panels.OrderBy(panel => panel.transform.position.PathDistanceTo(member.transform.position)))
             {
                 if (obj.beingUsed
                     || obj.IsSurfaceObject
@@ -527,9 +586,7 @@ namespace Automatons
                 {
                     Mod.Log($"Sending {member.name} to clean solar panel");
                     var job = new Job(member.memberRH, obj, panel.GetComponent<ObjectInteraction_CleanSolarPanel>(), obj.GetInteractionTransform(0));
-
                     member.AddJob(job);
-                    //panel.beingUsed = true;
                 }
             }
         }
@@ -555,10 +612,20 @@ namespace Automatons
                 return;
             }
 
+            fireCheckTimer += Time.deltaTime;
+            bool onlyBurningOnSurface = false;
+            bool anythingUnhandled = false;
+            if (fireCheckTimer > 1)
+            {
+                onlyBurningOnSurface = BurnableObjects.Where(o => o.isBurning && !o.isBeingExtinguished).All(b => b.obj.IsSurfaceObject);
+                anythingUnhandled = BurnableObjects.Any(o => o.isBurning && !o.isBeingExtinguished);
+            }
+
+            fireCheckTimer--;
             if (BreachManager.instance.inProgress
-                && !BurnableObjects.Where(o => o.isBurning && !o.isBeingExtinguished).All(b => b.obj.IsSurfaceObject)
+                && !onlyBurningOnSurface
                 || !BreachManager.instance.inProgress
-                && BurnableObjects.Any(o => o.isBurning && !o.isBeingExtinguished))
+                && anythingUnhandled)
             {
                 Mod.Log($"Cancelling everything for {member.name}");
                 // check every interaction by member jobs and cancel that
@@ -578,7 +645,6 @@ namespace Automatons
                 }
 
                 member.CancelJobsImmediately();
-                member.CancelAIJobsImmediately();
                 DoFirefighting(member, false);
                 return;
             }
@@ -598,6 +664,16 @@ namespace Automatons
             {
                 if (member.HasEmptyQueues())
                 {
+                    if (Mod.FirstAid.Value)
+                    {
+                        DoFirstAid(member, false);
+                    }
+
+                    if (!member.HasEmptyQueues())
+                    {
+                        return;
+                    }
+
                     AccessTools.Method(typeof(MemberAI), "EvaluateNeeds").Invoke(member.memberRH.memberAI, new object[] { });
                     member.memberRH.memberAI.FindNeedsJob();
                     if (!member.HasEmptyQueues())
@@ -800,7 +876,7 @@ namespace Automatons
             }
 
             MemberTimers[member] += Time.deltaTime;
-            var variance = Random.Range(0, 2f);
+            var variance = Random.Range(0, 4f);
             if (MemberTimers[member] < WaitDuration + variance)
             {
                 return true;
