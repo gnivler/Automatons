@@ -124,8 +124,7 @@ namespace Automatons
                 return;
             }
 
-            if (member.HasEmptyQueues()
-                && member.currentjob is null
+            if (member.jobQueueCount == 0
                 && member.currentTemperature is not TemperatureRating.Okay)
             {
                 var area = FindAreaOfTemperature(TemperatureRating.Okay).FirstOrDefault()
@@ -147,7 +146,7 @@ namespace Automatons
 
         internal static void DoExercise(Member member, bool _)
         {
-            if (!member.HasEmptyQueues()
+            if (member.jobQueueCount > 0
                 || member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
             {
                 return;
@@ -175,25 +174,36 @@ namespace Automatons
 
         internal static void DoFarming(Member member, bool _)
         {
-            if (!member.HasEmptyQueues()
-                || member.currentjob is not null
-                || IsBadWeather())
+            if (member.jobQueueCount > 0)
             {
                 return;
             }
 
-            var planters = GetAllPlanters().Cast<Object_Planter>().Where(p =>
-                !p.HasActiveJobs()
-                && !p.beingUsed
-                && p.GStage is not Object_Planter.GrowingStage.NoSeed
-                && (p.CurrentWaterLevel <= 0
-                    || p.GStage == Object_Planter.GrowingStage.Harvestable));
+            var planters = GetAllPlanters().Cast<Object_Planter>().Where(planter =>
+                    !planter.isBroken
+                    && planter.GStage is not Object_Planter.GrowingStage.NoSeed
+                    && !planter.HasActiveJobs()
+                    && (planter.CurrentWaterLevel <= Mod.RepairThreshold.Value
+                        || planter.GStage == Object_Planter.GrowingStage.Harvestable))
+                .ToList();
 
-            foreach (var obj in planters)
+            if (IsBadWeather()
+                && planters.All(planter => planter.IsSurfaceObject))
             {
-                var planter = obj;
-                Mod.Log($"{planter.name} {planter.SeedType.name} {planter.GrowPercent}");
-                if (planter.CurrentWaterLevel > 0)
+                return;
+            }
+
+            foreach (var planter in planters)
+            {
+                if (IsBadWeather()
+                    && planter.IsSurfaceObject
+                    || planter.m_powerUseType is not Object_Powered.PowerUseType.Never
+                    && !planter.isPowered)
+                {
+                    continue;
+                }
+
+                if (planter.GStage == Object_Planter.GrowingStage.Harvestable)
                 {
                     DoFarmingJob<ObjectInteraction_HarvestPlant>(planter, member);
                     return;
@@ -225,10 +235,8 @@ namespace Automatons
 
             Mod.Log($"Sending {member.name} to {planter} - {typeof(T)}");
             var interaction = planter.GetComponent<T>();
-            var job = new Job(member.memberRH, planter, interaction, planter.GetInteractionTransform(0));
+            var job = new Job(member.memberRH, planter, interaction, planter.ChooseValidInteractionPoint());
             member.AddJob(job);
-
-            //planter.beingUsed = true;
         }
 
         private static void DoFirefighting(Member member, bool _)
@@ -350,7 +358,7 @@ namespace Automatons
 
         internal static void DoHarvestTraps(Member member, bool _)
         {
-            if (!member.HasEmptyQueues())
+            if (member.jobQueueCount > 0)
             {
                 return;
             }
@@ -375,13 +383,8 @@ namespace Automatons
 
         internal static void DoReading(Member member, bool idleReading)
         {
-            if (!member.HasEmptyQueues()
-                || member.currentjob is not null)
-            {
-                return;
-            }
-
-            if (member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
+            if (member.jobQueueCount > 0 ||
+                member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
             {
                 return;
             }
@@ -461,7 +464,7 @@ namespace Automatons
         internal static void DoRest(Member member, bool _)
         {
             if (!Mod.RestUp.Value
-                || !member.HasEmptyQueues()
+                || member.jobQueueCount > 0
                 || member.memberRH.memberAI.lastState == MemberAI.AiState.Rest)
             {
                 return;
@@ -497,7 +500,7 @@ namespace Automatons
         {
             if (!Mod.ShelterCleaning.Value
                 || EffectsManager.instance is null
-                || !member.HasEmptyQueues()
+                || member.jobQueueCount > 0
                 || member.needs.fatigue.NormalizedValue * 100 > Mod.FatigueThreshold.Value)
             {
                 return;
@@ -623,6 +626,7 @@ namespace Automatons
 
             fireCheckTimer--;
             if (BreachManager.instance.inProgress
+                && BurnableObjects.Count(o => o.isBurning && !o.isBeingExtinguished) > 0
                 && !onlyBurningOnSurface
                 || !BreachManager.instance.inProgress
                 && anythingUnhandled)
@@ -650,7 +654,8 @@ namespace Automatons
             }
 
             if (BreachManager.instance.inProgress
-                || member.currentjob is not null)
+                || member.jobQueueCount > 0
+                || member.memberRH.ExternalMeshLinker.SleepParticles.isEmitting)
             {
                 return;
             }
@@ -660,34 +665,35 @@ namespace Automatons
                 return;
             }
 
+            Mod.Log($"{member.name} done waiting on timer");
             foreach (var methodInfo in ExtraJobs)
             {
-                if (member.HasEmptyQueues())
+                if (member.aiQueueCount + member.jobQueueCount == 0)
                 {
                     if (Mod.FirstAid.Value)
                     {
                         DoFirstAid(member, false);
                     }
 
-                    if (!member.HasEmptyQueues())
+                    if (member.aiQueueCount + member.jobQueueCount > 0)
                     {
                         return;
                     }
 
                     AccessTools.Method(typeof(MemberAI), "EvaluateNeeds").Invoke(member.memberRH.memberAI, new object[] { });
                     member.memberRH.memberAI.FindNeedsJob();
-                    if (!member.HasEmptyQueues())
+                    if (member.aiQueueCount + member.jobQueueCount > 0)
                     {
                         Mod.Log($"{member.name} found needs job {member.aiQueue[0]?.jobInteractionType}");
                         return;
                     }
                 }
 
-                if (member.HasEmptyQueues())
+                if (member.aiQueueCount + member.jobQueueCount == 0)
                 {
                     //Mod.Log($"{member.name} {methodInfo.Name}");
                     methodInfo.Invoke(null, new object[] { member, false });
-                    if (!member.HasEmptyQueues())
+                    if (member.jobQueueCount > 0)
                     {
                         //Mod.Log($"{member.name} found job {member.jobQueue[0]?.jobInteractionType}");
                         return;
@@ -831,6 +837,7 @@ namespace Automatons
             result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.GreenhouseCamo));
             result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.HugeGreenhouse));
             result.AddRange(ObjectManager.instance.GetObjectsOfType(ObjectManager.ObjectType.LargeGreenhouse));
+            result.Do(o => Mod.Log(o.GetType().Name));
             return result;
         }
 
@@ -876,7 +883,7 @@ namespace Automatons
             }
 
             MemberTimers[member] += Time.deltaTime;
-            var variance = Random.Range(0, 4f);
+            var variance = Random.Range(0, 3f);
             if (MemberTimers[member] < WaitDuration + variance)
             {
                 return true;

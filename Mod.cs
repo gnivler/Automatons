@@ -18,7 +18,7 @@ namespace Automatons
     {
         private const string PluginGUID = "ca.gnivler.sheltered2.Automatons";
         private const string PluginName = "Automatons";
-        private const string PluginVersion = "1.6.0";
+        private const string PluginVersion = "1.6.1";
         private static string LogFile;
         private static bool dev;
 
@@ -139,55 +139,57 @@ namespace Automatons
                 if (MemberManager.instance is not null)
                 {
                     MemberManager.instance.currentMembers[0].member.m_leaderRank = Member.LeaderStatus.General;
-                    var everyone = MemberManager.instance.GetAllShelteredMembers();
+                    var everyone = MemberManager.instance.currentMembers.Where(member => member.member.isShelterMember);
                     foreach (var member in everyone)
                     {
-                        if (member.member.OutOnExpedition
-                            || member.member.OutOnLoan)
+                        if (!member.member.OutOnExpedition
+                            && member.member.OutOnLoan)
                         {
-                            continue;
-                        }
-
-                        try
-                        {
-                            Helper.ClearGlobals();
-                            BreachManager.instance.ResetSpawnTime();
-                            member.member.m_isUnconscious = false;
-                            member.member.Heal(500);
-                            member.member.OutOnExpedition = false;
-                            member.member.InBreachParty = false;
-                            member.member.OutOnLoan = false;
-                            member.ForcefullyExitAnimationSubStates();
-                            Log($"Cancelling everything related to {member.name}");
-                            Helper.CancelEverythingRelatedToMemberActivity(member.member);
-                            NavMesh.SamplePosition(AreaManager.instance.m_surfaceArea.areaCollider.transform.position, out var hit, 20f, -1);
-                            member.member.transform.position = hit.position;
-                            var corpse = member.GetComponent<Obj_Corpse>();
-                            if (corpse is not null)
+                            try
                             {
-                                corpse.RemoveFromArea();
-                            }
-
-                            foreach (var obj in ObjectManager.instance.GetAllObjects())
-                            {
-                                foreach (var interaction in obj.interactions)
+                                Helper.ClearGlobals();
+                                BreachManager.instance.ResetSpawnTime();
+                                member.member.m_isUnconscious = false;
+                                member.member.Heal(500);
+                                member.member.OutOnExpedition = false;
+                                member.member.InBreachParty = false;
+                                member.member.OutOnLoan = false;
+                                member.ForcefullyExitAnimationSubStates();
+                                Log($"Cancelling everything related to {member.name}");
+                                Helper.CancelEverythingRelatedToMemberActivity(member.member);
+                                NavMesh.SamplePosition(AreaManager.instance.m_surfaceArea.areaCollider.transform.position, out var hit, 20f, -1);
+                                member.member.transform.position = hit.position;
+                                var corpse = member.GetComponent<Obj_Corpse>();
+                                if (corpse is not null)
                                 {
-                                    try
+                                    corpse.RemoveFromArea();
+                                }
+
+                                foreach (var obj in ObjectManager.instance.GetAllObjects())
+                                {
+                                    foreach (var interaction in obj.interactions)
                                     {
-                                        interaction.ForceUnregister(member);
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        Log(ex);
+                                        try
+                                        {
+                                            interaction.ForceUnregister(member);
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            Log(ex);
+                                        }
                                     }
                                 }
-                            }
 
-                            Helper.ShowFloatie("Everything cleared!", member.baseCharacter);
+                                Helper.ShowFloatie("Everything cleared!", member.baseCharacter);
+                            }
+                            catch (Exception ex)
+                            {
+                                Log(ex);
+                            }
                         }
-                        catch (Exception ex)
+                        else
                         {
-                            Log(ex);
+                            ExplorationManager.Instance.Parties.Do(party => party.RecallParty());
                         }
                     }
                 }
