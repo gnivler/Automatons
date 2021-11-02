@@ -1,4 +1,5 @@
 using System.Linq;
+using HarmonyLib;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -27,11 +28,6 @@ namespace Automatons
         internal static bool HasActiveJobs(this Object_Base objectBase)
         {
             return objectBase.interactions.Any(i => i.JobCount > 0);
-        }
-
-        internal static bool HasEmptyQueues(this Member member)
-        {
-            return member.jobQueueCount + member.aiQueueCount == 0;
         }
     }
 }

@@ -111,5 +111,9 @@ namespace Automatons
             Mod.Log(new string('=', 80));
             ClearGlobals();
         }
+
+        [HarmonyPatch(typeof(MemberAI), "Wander")]
+        [HarmonyPrefix]
+        public static bool MemberWander() => false;
     }
 }
