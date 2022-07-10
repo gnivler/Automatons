@@ -197,8 +197,7 @@ namespace Automatons
             {
                 if (IsBadWeather()
                     && planter.IsSurfaceObject
-                    || planter.m_powerUseType is not Object_Powered.PowerUseType.Never
-                    && !planter.isPowered)
+                    || !planter.isPowered)
                 {
                     continue;
                 }
@@ -265,17 +264,16 @@ namespace Automatons
                     if (extinguisher is not null)
                     {
                         Mod.Log($"Sending {member.name} to {burningObject.name} with extinguisher");
-                        extinguisher.m_inUse = true;
-                        var useFireExtinguisher = burningObject.GetComponent<ObjectInteraction_UseFireExtinguisher>();
-                        job = new Job_UseFireExtinguisher(
-                            member.memberRH, useFireExtinguisher, burningObject.obj, extinguisher.ChooseValidInteractionPoint(), extinguisher);
+                        extinguisher.beingUsed = true;
+                        var useFireExtinguisher = burningObject.GetComponent<ObjectInteraction_FireExtinguisherAction>();
+                        job = new Job_UseFireExtinguisher(member.memberRH, useFireExtinguisher, burningObject.GetComponent<Object_Base>(), extinguisher.ChooseValidInteractionPoint(), extinguisher);
                     }
                     else
                     {
                         Mod.Log($"Sending {member.name} to extinguish {burningObject.name}");
                         var interaction = burningObject.GetComponent<ObjectInteraction_ExtinguishFire>();
                         var source = ObjectManager.instance.GetNearestObjectOfCategory(ObjectManager.ObjectCategory.WaterButt, member.transform.position);
-                        job = new Job_ExtinguishFire(member.memberRH, interaction, burningObject.obj, source.ChooseValidInteractionPoint(), source);
+                        job = new Job_ExtinguishFire(member.memberRH, interaction, burningObject.GetComponent<Object_Base>(), source.ChooseValidInteractionPoint(), source);
                     }
 
                     member.AddJob(job);
@@ -341,7 +339,7 @@ namespace Automatons
             }
 
             var interaction = closestCabinet.GetInteractionByType(InteractionTypes.InteractionType.Medicate);
-            ((ObjectInteraction_Medicate)interaction).m_selectedMedicine = firstAidItem;
+            ((ObjectInteraction_Medicate)interaction).SetMedicineToBeTaken(firstAidItem);
             Mod.Log($"Sending {member} to use {firstAidItem.def.name}");
             member.CancelJobsImmediately();
             member.AddJob(new Job(member.memberRH, closestCabinet, closestCabinet.GetInteractionByType(InteractionTypes.InteractionType.Medicate), closestCabinet.ChooseValidInteractionPoint()));
@@ -367,7 +365,7 @@ namespace Automatons
             {
                 var trapInteraction = Traps.ElementAt(i);
                 var snareTrap = (Object_SnareTrap)trapInteraction.obj;
-                if (snareTrap.trappedAnimalID == -1
+                if (snareTrap.CanTrapAnimals()
                     || snareTrap.HasActiveJobs()
                     || IsBadWeather())
                 {
@@ -465,7 +463,7 @@ namespace Automatons
         {
             if (!Mod.RestUp.Value
                 || member.jobQueueCount > 0
-                || member.memberRH.memberAI.lastState == MemberAI.AiState.Rest)
+                || Traverse.Create(member.memberRH.memberAI).Field<MemberAI.AiState>("lastState").Value == MemberAI.AiState.Rest)
             {
                 return;
             }
@@ -473,18 +471,18 @@ namespace Automatons
             var bed = ObjectManager.instance.GetNearestObjectsOfCategory(ObjectManager.ObjectCategory.Bed, member.transform.position)
                 .FirstOrDefault(b => b.IsUsable() && !b.IsWithinHoldingCell);
             if (bed is not null
-                && bed.GetInteractionByType(InteractionTypes.InteractionType.Sleep).interactionMembers.Count == 0)
+                && bed.GetInteractionByType(InteractionTypes.InteractionType.Sleep).InteractionMemberCount == 0)
             {
                 Job job = default;
-                if (member.needs.fatigue.value > 20)
+                if (member.needs.fatigue.Value > 20)
                 {
                     job = new Job(member.memberRH, bed, bed.GetComponent<ObjectInteraction_Sleep>(), bed.GetInteractionByType(InteractionTypes.InteractionType.Sleep).transform);
-                    member.memberRH.memberAI.lastState = MemberAI.AiState.Rest;
+                    Traverse.Create(member.memberRH.memberAI).Field<MemberAI.AiState>("lastState").Value = MemberAI.AiState.Rest;
                 }
                 else if (member.healthNormalised * 100 < 100)
                 {
                     job = new Job(member.memberRH, bed, bed.GetComponent<ObjectInteraction_Rest>(), bed.GetInteractionByType(InteractionTypes.InteractionType.Sleep).transform);
-                    member.memberRH.memberAI.lastState = MemberAI.AiState.Rest;
+                    Traverse.Create(member.memberRH.memberAI).Field<MemberAI.AiState>("lastState").Value = MemberAI.AiState.Rest;
                 }
 
                 if (job is not null)
@@ -529,7 +527,8 @@ namespace Automatons
                 }
             }
 
-            var dirt = manager.areas.Sum(area => manager.CalculateDirtValue(area));
+            var dirt = manager.areas.Sum(area => (float) AccessTools.Method(typeof(AreaManager), "CalculateDirtValue").Invoke(manager, new object[] { area }));
+
             if (dirt + tableDirt + generatorDirt < Mod.ShelterCleaningThreshold.Value)
             {
                 return;
@@ -567,7 +566,7 @@ namespace Automatons
                 && dirt + tableDirt + generatorDirt > Mod.ShelterCleaningThreshold.Value)
             {
                 Mod.Log($"Sending {member.name} to clean the shelter");
-                job = new Job_CleanShelter(member.memberRH, mop.GetComponent<ObjectInteraction_CleanShelter>(), (Object_MopAndBucket)mop, mop.transform);
+                job = new Job_CleanShelter(member.memberRH, mop.GetComponent<ObjectInteraction_CleanShelter>(), (Object_MopAndBucket)mop, mop.transform, true);
                 member.AddJob(job);
             }
         }
@@ -620,7 +619,7 @@ namespace Automatons
             bool anythingUnhandled = false;
             if (fireCheckTimer > 1)
             {
-                onlyBurningOnSurface = BurnableObjects.Where(o => o.isBurning && !o.isBeingExtinguished).All(b => b.obj.IsSurfaceObject);
+                onlyBurningOnSurface = BurnableObjects.Where(o => o.isBurning && !o.isBeingExtinguished).All(b => b.GetComponent<Object_Base>().IsSurfaceObject);
                 anythingUnhandled = BurnableObjects.Any(o => o.isBurning && !o.isBeingExtinguished);
             }
 
@@ -917,8 +916,8 @@ namespace Automatons
 
         internal static void ShowFloatie(string message, BaseCharacter baseCharacter)
         {
-            var offset = baseCharacter.m_healthLossFloatingTextOffset;
-            baseCharacter.m_floatingTextPool.ShowFloatingText(message, baseCharacter.transform.position + offset, Color.magenta);
+            var offset = baseCharacter.healthLossFloatingTextOffset;
+            baseCharacter.floatingTextPool.ShowFloatingText(message, baseCharacter.transform.position + offset, Color.magenta);
         }
     }
 }
