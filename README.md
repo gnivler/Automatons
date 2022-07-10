@@ -1,6 +1,4 @@
 # Automatons
-mod for Sheltered 2, newest version in .zip file.
+mod for Sheltered 2, download from [Releases](https://github.com/gnivler/Automatons/releases)
 
-Site on nexusmods is not maintained anymore, but kept for installation instructions and legacy
-
-https://www.nexusmods.com/sheltered2/mods/5
+Site on [nexusmods/Automatons](https://www.nexusmods.com/sheltered2/mods/5) is not maintained anymore, but kept for installation instructions and legacy
