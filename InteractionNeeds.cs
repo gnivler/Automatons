@@ -1,3 +1,4 @@
+using HarmonyLib;
 using UnityEngine;
 
 namespace Automatons
@@ -11,7 +12,7 @@ namespace Automatons
         private void Update()
         {
             if (Member.OutOnExpedition
-                || Member.m_outOnLoan)
+                || Member.OutOnLoan)
             {
                 return;
             }
@@ -26,8 +27,8 @@ namespace Automatons
 
             if (IsDoingInteraction(Member))
             {
-                Member.memberRH.memberAI.EvaluateNeeds();
-                if (Member.memberRH.memberAI.currentPriorityNeed is not NeedsStat.NeedsStatType.Max)
+                Traverse.Create(Member.memberRH.memberAI).Method("EvaluateNeeds");
+                if (Traverse.Create(Member.memberRH.memberAI).Field<NeedsStat.NeedsStatType>("currentPriorityNeed").Value is not NeedsStat.NeedsStatType.Max)
                 {
                     Mod.Log($"{Member.name} found needs job during interaction {Member.currentjob.jobInteractionType}");
                     Member.memberRH.memberAI.FindNeedsJob();
@@ -51,7 +52,7 @@ namespace Automatons
 
         private static bool IsDoingInteraction(Member member)
         {
-            return member.interactionType
+            return Traverse.Create(member).Field<InteractionTypes.InteractionType>("interactionType").Value
                 is InteractionTypes.InteractionType.Exercise
                 or InteractionTypes.InteractionType.ReadCharismaBook
                 or InteractionTypes.InteractionType.ReadIntelligenceBook

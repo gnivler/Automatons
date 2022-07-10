@@ -1,118 +1,117 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-    <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
-    <PropertyGroup>
-        <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-        <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-        <ProjectGuid>{00A67799-25C6-4251-92DF-D464ADFCE5D6}</ProjectGuid>
-        <OutputType>Library</OutputType>
-        <AppDesignerFolder>Properties</AppDesignerFolder>
-        <RootNamespace>Automatons</RootNamespace>
-        <AssemblyName>Automatons</AssemblyName>
-        <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
-        <FileAlignment>512</FileAlignment>
-        <LangVersion>default</LangVersion>
-    </PropertyGroup>
-    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-        <PlatformTarget>x64</PlatformTarget>
-        <DebugSymbols>true</DebugSymbols>
-        <DebugType>full</DebugType>
-        <Optimize>false</Optimize>
-        <OutputPath>bin\Debug\</OutputPath>
-        <DefineConstants>DEBUG;TRACE</DefineConstants>
-        <ErrorReport>prompt</ErrorReport>
-        <WarningLevel>4</WarningLevel>
-        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    </PropertyGroup>
-    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-        <PlatformTarget>x64</PlatformTarget>
-        <Optimize>true</Optimize>
-        <OutputPath>bin\Release\</OutputPath>
-        <DefineConstants>TRACE</DefineConstants>
-        <ErrorReport>prompt</ErrorReport>
-        <WarningLevel>4</WarningLevel>
-        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-        <DebugSymbols>true</DebugSymbols>
-        <DebugType>full</DebugType>
-    </PropertyGroup>
-    <ItemGroup>
-        <Compile Include="Extensions.cs" />
-        <Compile Include="Helper.cs" />
-        <Compile Include="InteractionNeeds.cs" />
-        <Compile Include="Mod.cs" />
-        <Compile Include="Patches.cs" />
-        <Compile Include="Properties\AssemblyInfo.cs" />
-    </ItemGroup>
-    <ItemGroup>
-      <Reference Include="0Harmony, Version=2.5.4.0, Culture=neutral, PublicKeyToken=null">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\BepInEx\core\0Harmony.dll</HintPath>
-      </Reference>
-      <Reference Include="0Harmony, Version=2.5.5.0, Culture=neutral, PublicKeyToken=null">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\BepInEx\core\0Harmony.dll</HintPath>
-      </Reference>
-      <Reference Include="Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\publicized_assemblies\Assembly-CSharp_publicized.dll</HintPath>
-      </Reference>
-      <Reference Include="BepInEx, Version=5.4.17.0, Culture=neutral, PublicKeyToken=null">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\BepInEx\core\BepInEx.dll</HintPath>
-      </Reference>
-      <Reference Include="FMODUnity, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\FMODUnity.dll</HintPath>
-      </Reference>
-      <Reference Include="NavMeshComponents, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\NavMeshComponents.dll</HintPath>
-      </Reference>
-      <Reference Include="System" />
-      <Reference Include="System.Core" />
-      <Reference Include="UnityEngine, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.dll</HintPath>
-      </Reference>
-      <Reference Include="UnityEngine.AIModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.AIModule.dll</HintPath>
-      </Reference>
-      <Reference Include="UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
-      </Reference>
-      <Reference Include="UnityEngine.InputLegacyModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
-      </Reference>
-      <Reference Include="UnityEngine.ParticleSystemModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.ParticleSystemModule.dll</HintPath>
-      </Reference>
-      <Reference Include="UnityEngine.PhysicsModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.PhysicsModule.dll</HintPath>
-      </Reference>
-      <Reference Include="UnityEngine.TerrainModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.TerrainModule.dll</HintPath>
-      </Reference>
-      <Reference Include="UnityEngine.UI, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.UI.dll</HintPath>
-      </Reference>
-      <Reference Include="UnityFx.Outline, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityFx.Outline.dll</HintPath>
-      </Reference>
-      <Reference Include="UnityFx.Outline.URP, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityFx.Outline.URP.dll</HintPath>
-      </Reference>
-    </ItemGroup>
-    <ItemGroup>
-      <Content Include="LICENSE" />
-      <Content Include="README.md" />
-    </ItemGroup>
-    <ItemGroup>
-      <ReferencePathWithRefAssemblies Update="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\Facades\netstandard.dll" />
-      <ReferencePathWithRefAssemblies Update="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\mscorlib.dll" />
-    </ItemGroup>
-
-    <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-    <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{00A67799-25C6-4251-92DF-D464ADFCE5D6}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>Automatons</RootNamespace>
+    <AssemblyName>Automatons</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <LangVersion>default</LangVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>x64</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>x64</PlatformTarget>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+  </PropertyGroup>
+  <PropertyGroup>
+    <RunPostBuildEvent>OnBuildSuccess</RunPostBuildEvent>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Extensions.cs" />
+    <Compile Include="Helper.cs" />
+    <Compile Include="InteractionNeeds.cs" />
+    <Compile Include="Mod.cs" />
+    <Compile Include="Patches.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="0Harmony">
+      <HintPath>A:\Steam\steamapps\common\Sheltered 2\BepInEx\core\0Harmony.dll</HintPath>
+    </Reference>
+    <Reference Include="Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>B:\Program Files\Unity\Exported assetes\Sheltered 2 - 2022-07-10\Sheltered2\AuxiliaryFiles\GameAssemblies\Assembly-CSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="BepInEx">
+      <HintPath>A:\Steam\steamapps\common\Sheltered 2\BepInEx\core\BepInEx.dll</HintPath>
+    </Reference>
+    <Reference Include="FMODUnity, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>A:\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\FMODUnity.dll</HintPath>
+    </Reference>
+    <Reference Include="NavMeshComponents, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>A:\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\NavMeshComponents.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="UnityEngine, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>A:\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.AIModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>A:\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.AIModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>A:\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>A:\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.ParticleSystemModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>A:\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.ParticleSystemModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.PhysicsModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>A:\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.PhysicsModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.TerrainModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>A:\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.TerrainModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UI, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>A:\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityEngine.UI.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityFx.Outline, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>A:\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityFx.Outline.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityFx.Outline.URP, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>A:\Steam\steamapps\common\Sheltered 2\Sheltered2_Data\Managed\UnityFx.Outline.URP.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="LICENSE" />
+    <Content Include="README.md" />
+  </ItemGroup>
+  <ItemGroup>
+    <ReferencePathWithRefAssemblies Update="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\Facades\netstandard.dll" />
+    <ReferencePathWithRefAssemblies Update="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\mscorlib.dll" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
          Other similar extension points exist, see Microsoft.Common.targets.
     <Target Name="BeforeBuild">
     </Target>
     <Target Name="AfterBuild">
     </Target>
     -->
-    <PropertyGroup>
-        <PostBuildEvent>xcopy "$(TargetPath)" "C:\Program Files (x86)\Steam\steamapps\common\Sheltered 2\BepInEx\plugins\Automatons" /Y</PostBuildEvent>
-    </PropertyGroup>
+  <PropertyGroup>
+    <PostBuildEvent>xcopy /y "$(TargetDir)"Automatons.dll "A:\Steam\steamapps\common\Sheltered 2\BepInEx\plugins"</PostBuildEvent>
+  </PropertyGroup>
 </Project>

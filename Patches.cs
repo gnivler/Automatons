@@ -78,7 +78,7 @@ namespace Automatons
             if (__instance.isShelterMember)
             {
                 var component = __instance.gameObject.AddComponent<InteractionNeeds>();
-                component.Member = __instance.baseRH.memberNavigation.member;
+                component.Member = Traverse.Create(__instance.baseRH.memberNavigation).Field<Member>("member").Value;
             }
         }
 

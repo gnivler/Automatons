@@ -18,7 +18,7 @@ namespace Automatons
     {
         private const string PluginGUID = "ca.gnivler.sheltered2.Automatons";
         private const string PluginName = "Automatons";
-        private const string PluginVersion = "1.6.1";
+        private const string PluginVersion = "1.6.2";
         private static string LogFile;
         private static bool dev;
 
@@ -138,7 +138,7 @@ namespace Automatons
 
                 if (MemberManager.instance is not null)
                 {
-                    MemberManager.instance.currentMembers[0].member.m_leaderRank = Member.LeaderStatus.General;
+                    MemberManager.instance.currentMembers[0].member.SetLeaderStatus(Member.LeaderStatus.General);
                     var everyone = MemberManager.instance.currentMembers.Where(member => member.member.isShelterMember);
                     foreach (var member in everyone)
                     {
@@ -148,16 +148,16 @@ namespace Automatons
                             try
                             {
                                 Helper.ClearGlobals();
-                                BreachManager.instance.ResetSpawnTime();
-                                member.member.m_isUnconscious = false;
+                                Traverse.Create(BreachManager.instance).Method("ResetSpawnTime");
+                                Traverse.Create(member.member).Field<bool>("m_isUnconscious").Value = false;
                                 member.member.Heal(500);
                                 member.member.OutOnExpedition = false;
                                 member.member.InBreachParty = false;
-                                member.member.OutOnLoan = false;
+                                Traverse.Create(member.member).Field<bool>("m_outOnLoan").Value = false;
                                 member.ForcefullyExitAnimationSubStates();
                                 Log($"Cancelling everything related to {member.name}");
                                 Helper.CancelEverythingRelatedToMemberActivity(member.member);
-                                NavMesh.SamplePosition(AreaManager.instance.m_surfaceArea.areaCollider.transform.position, out var hit, 20f, -1);
+                                NavMesh.SamplePosition(AreaManager.instance.SurfaceArea.areaCollider.transform.position, out var hit, 20f, -1);
                                 member.member.transform.position = hit.position;
                                 var corpse = member.GetComponent<Obj_Corpse>();
                                 if (corpse is not null)
@@ -332,7 +332,7 @@ namespace Automatons
                 {
                     if (UnityEngine.Random.Range(0, 5) == 0)
                     {
-                        m.member.illness.radiation.m_currentRads = 200;
+                        Traverse.Create(m.member.illness.radiation).Field<float>("m_currentRads").Value = 200;
                         m.member.illness.radiation.SetActive(true);
                     }
                 }
